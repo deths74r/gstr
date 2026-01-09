@@ -339,6 +339,145 @@ TEST(truncate) {
 }
 
 /* ============================================================================
+ * Grapheme Cluster Tests
+ * ============================================================================ */
+
+TEST(next_grapheme_ascii) {
+    /* Simple ASCII: each character is its own grapheme */
+    const char *text = "Hello";
+    int length = 5;
+    ASSERT_EQ(utflite_next_grapheme(text, length, 0), 1);  /* H */
+    ASSERT_EQ(utflite_next_grapheme(text, length, 1), 2);  /* e */
+    ASSERT_EQ(utflite_next_grapheme(text, length, 4), 5);  /* o -> end */
+}
+
+TEST(next_grapheme_combining_marks) {
+    /* e + combining acute = 1 grapheme (2 codepoints) */
+    /* e (0x65) + combining acute (U+0301 = 0xCC 0x81) */
+    const char *text = "e\xCC\x81";  /* e + combining acute */
+    int length = 3;
+    /* Starting at 0, should skip past both codepoints */
+    ASSERT_EQ(utflite_next_grapheme(text, length, 0), 3);
+}
+
+TEST(next_grapheme_emoji_zwj) {
+    /* Family emoji: man + ZWJ + woman + ZWJ + girl */
+    /* U+1F468 U+200D U+1F469 U+200D U+1F467 */
+    const char *text = "\xF0\x9F\x91\xA8"  /* man */
+                       "\xE2\x80\x8D"      /* ZWJ */
+                       "\xF0\x9F\x91\xA9"  /* woman */
+                       "\xE2\x80\x8D"      /* ZWJ */
+                       "\xF0\x9F\x91\xA7"; /* girl */
+    int length = 18;
+    /* Entire sequence is one grapheme */
+    ASSERT_EQ(utflite_next_grapheme(text, length, 0), 18);
+}
+
+TEST(next_grapheme_flag) {
+    /* Regional indicator pair: US flag (U+1F1FA U+1F1F8) */
+    const char *text = "\xF0\x9F\x87\xBA\xF0\x9F\x87\xB8";  /* US flag */
+    int length = 8;
+    /* Both regional indicators form one grapheme */
+    ASSERT_EQ(utflite_next_grapheme(text, length, 0), 8);
+}
+
+TEST(next_grapheme_skin_tone) {
+    /* Waving hand + skin tone modifier */
+    /* U+1F44B U+1F3FD (medium skin tone) */
+    const char *text = "\xF0\x9F\x91\x8B\xF0\x9F\x8F\xBD";
+    int length = 8;
+    /* Base emoji + modifier = 1 grapheme */
+    ASSERT_EQ(utflite_next_grapheme(text, length, 0), 8);
+}
+
+TEST(next_grapheme_hangul) {
+    /* Hangul syllable block: should cluster correctly */
+    /* Precomposed syllable U+AC00 "ga" */
+    const char *text = "\xEA\xB0\x80";
+    int length = 3;
+    ASSERT_EQ(utflite_next_grapheme(text, length, 0), 3);
+}
+
+TEST(next_grapheme_cjk) {
+    /* CJK characters: each is its own grapheme */
+    const char *text = "\xE4\xB8\xAD\xE6\x96\x87";  /* "Chinese" in Chinese */
+    int length = 6;
+    ASSERT_EQ(utflite_next_grapheme(text, length, 0), 3);  /* First char */
+    ASSERT_EQ(utflite_next_grapheme(text, length, 3), 6);  /* Second char */
+}
+
+TEST(next_grapheme_null_input) {
+    /* Null text should return length safely */
+    ASSERT_EQ(utflite_next_grapheme(NULL, 10, 0), 10);
+}
+
+TEST(prev_grapheme_ascii) {
+    const char *text = "Hello";
+    ASSERT_EQ(utflite_prev_grapheme(text, 5), 4);  /* Before 'o' */
+    ASSERT_EQ(utflite_prev_grapheme(text, 1), 0);  /* Before 'e' */
+    ASSERT_EQ(utflite_prev_grapheme(text, 0), 0);  /* At start */
+}
+
+TEST(prev_grapheme_combining_marks) {
+    /* e + combining acute = 1 grapheme */
+    const char *text = "e\xCC\x81";
+    /* From end (offset 3), should go back to start (offset 0) */
+    ASSERT_EQ(utflite_prev_grapheme(text, 3), 0);
+}
+
+TEST(prev_grapheme_emoji_zwj) {
+    /* Family emoji followed by "!" */
+    const char *text = "\xF0\x9F\x91\xA8"  /* man */
+                       "\xE2\x80\x8D"      /* ZWJ */
+                       "\xF0\x9F\x91\xA9"  /* woman */
+                       "\xE2\x80\x8D"      /* ZWJ */
+                       "\xF0\x9F\x91\xA7"  /* girl */
+                       "!";               /* simple char */
+    /* From "!" (offset 18->19), go back */
+    ASSERT_EQ(utflite_prev_grapheme(text, 19), 18);  /* Before ! */
+    ASSERT_EQ(utflite_prev_grapheme(text, 18), 0);   /* Before family */
+}
+
+TEST(prev_grapheme_flag) {
+    /* US flag + "A" */
+    const char *text = "\xF0\x9F\x87\xBA\xF0\x9F\x87\xB8" "A";
+    /* From A (offset 8->9), should go back to start of flag */
+    ASSERT_EQ(utflite_prev_grapheme(text, 9), 8);  /* Before A */
+    ASSERT_EQ(utflite_prev_grapheme(text, 8), 0);  /* Before flag */
+}
+
+TEST(prev_grapheme_null_input) {
+    ASSERT_EQ(utflite_prev_grapheme(NULL, 5), 0);
+}
+
+TEST(grapheme_mixed_line) {
+    /* Mixed line: Hi + Canada flag + CJK + family + ! */
+    const char *text = "Hi"
+                       "\xF0\x9F\x87\xA8\xF0\x9F\x87\xA6"  /* Canada flag */
+                       "\xE4\xB8\xAD"                      /* CJK */
+                       "\xF0\x9F\x91\xA8\xE2\x80\x8D"      /* man + ZWJ */
+                       "\xF0\x9F\x91\xA9\xE2\x80\x8D"      /* woman + ZWJ */
+                       "\xF0\x9F\x91\xA7"                  /* girl */
+                       "!";
+    int length = 32;
+
+    /* Forward iteration: H, i, flag, CJK, family, ! */
+    int offset = 0;
+    offset = utflite_next_grapheme(text, length, offset);  /* After H */
+    ASSERT_EQ(offset, 1);
+    offset = utflite_next_grapheme(text, length, offset);  /* After i */
+    ASSERT_EQ(offset, 2);
+    offset = utflite_next_grapheme(text, length, offset);  /* After flag */
+    ASSERT_EQ(offset, 10);
+    offset = utflite_next_grapheme(text, length, offset);  /* After CJK */
+    ASSERT_EQ(offset, 13);
+    offset = utflite_next_grapheme(text, length, offset);  /* After family */
+    ASSERT_EQ(offset, 31);
+    offset = utflite_next_grapheme(text, length, offset);  /* After ! */
+    ASSERT_EQ(offset, 32);
+}
+
+/* ============================================================================
  * Main
  * ============================================================================ */
 
@@ -379,6 +518,22 @@ int main(void) {
     printf("\nNavigation tests:\n");
     RUN(next_char);
     RUN(prev_char);
+
+    printf("\nGrapheme cluster tests:\n");
+    RUN(next_grapheme_ascii);
+    RUN(next_grapheme_combining_marks);
+    RUN(next_grapheme_emoji_zwj);
+    RUN(next_grapheme_flag);
+    RUN(next_grapheme_skin_tone);
+    RUN(next_grapheme_hangul);
+    RUN(next_grapheme_cjk);
+    RUN(next_grapheme_null_input);
+    RUN(prev_grapheme_ascii);
+    RUN(prev_grapheme_combining_marks);
+    RUN(prev_grapheme_emoji_zwj);
+    RUN(prev_grapheme_flag);
+    RUN(prev_grapheme_null_input);
+    RUN(grapheme_mixed_line);
 
     printf("\nUtility tests:\n");
     RUN(validate_valid);

@@ -24,8 +24,8 @@ extern "C" {
 /* Library version: major.minor.patch */
 #define UTFLITE_VERSION_MAJOR 1
 #define UTFLITE_VERSION_MINOR 5
-#define UTFLITE_VERSION_PATCH 1
-#define UTFLITE_VERSION_STRING "1.5.1"
+#define UTFLITE_VERSION_PATCH 2
+#define UTFLITE_VERSION_STRING "1.5.2"
 
 #define UTFLITE_UNICODE_VERSION 170  /* Unicode 17.0 */
 
