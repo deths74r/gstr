@@ -2,3 +2,6 @@
 build/
 test/test_utflite
 test/test_single
+
+# Sift agent memory (per-project database)
+.sift/
