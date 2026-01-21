@@ -1,0 +1,689 @@
+/*
+ * test_gstr.c - Unit tests for gstr grapheme string library
+ */
+
+#include <assert.h>
+#include <stdio.h>
+#include <string.h>
+
+#ifdef GSTR_SINGLE_HEADER
+#define GSTR_IMPLEMENTATION
+#include "gstr.h"
+#else
+#include <utflite/gstr.h>
+#endif
+
+static int tests_passed = 0;
+static int tests_failed = 0;
+
+#define TEST(name) static void test_##name(void)
+#define RUN(name)                                                              \
+  do {                                                                         \
+    printf("  %-50s", #name);                                                  \
+    test_##name();                                                             \
+    printf(" PASS\n");                                                         \
+    tests_passed++;                                                            \
+  } while (0)
+
+#define ASSERT(cond)                                                           \
+  do {                                                                         \
+    if (!(cond)) {                                                             \
+      printf(" FAIL\n    Assertion failed: %s\n    at %s:%d\n", #cond,         \
+             __FILE__, __LINE__);                                              \
+      tests_failed++;                                                          \
+      return;                                                                  \
+    }                                                                          \
+  } while (0)
+
+#define ASSERT_EQ(a, b)                                                        \
+  do {                                                                         \
+    if ((a) != (b)) {                                                          \
+      printf(" FAIL\n    Expected %d, got %d\n    at %s:%d\n", (int)(b),       \
+             (int)(a), __FILE__, __LINE__);                                    \
+      tests_failed++;                                                          \
+      return;                                                                  \
+    }                                                                          \
+  } while (0)
+
+#define ASSERT_EQ_SIZE(a, b)                                                   \
+  do {                                                                         \
+    if ((a) != (b)) {                                                          \
+      printf(" FAIL\n    Expected %zu, got %zu\n    at %s:%d\n", (size_t)(b),  \
+             (size_t)(a), __FILE__, __LINE__);                                 \
+      tests_failed++;                                                          \
+      return;                                                                  \
+    }                                                                          \
+  } while (0)
+
+#define ASSERT_STR_EQ(a, b)                                                    \
+  do {                                                                         \
+    if (strcmp((a), (b)) != 0) {                                               \
+      printf(" FAIL\n    Expected \"%s\", got \"%s\"\n    at %s:%d\n", (b),    \
+             (a), __FILE__, __LINE__);                                         \
+      tests_failed++;                                                          \
+      return;                                                                  \
+    }                                                                          \
+  } while (0)
+
+#define ASSERT_NULL(ptr)                                                       \
+  do {                                                                         \
+    if ((ptr) != NULL) {                                                       \
+      printf(" FAIL\n    Expected NULL, got non-NULL\n    at %s:%d\n",         \
+             __FILE__, __LINE__);                                              \
+      tests_failed++;                                                          \
+      return;                                                                  \
+    }                                                                          \
+  } while (0)
+
+#define ASSERT_NOT_NULL(ptr)                                                   \
+  do {                                                                         \
+    if ((ptr) == NULL) {                                                       \
+      printf(" FAIL\n    Expected non-NULL, got NULL\n    at %s:%d\n",         \
+             __FILE__, __LINE__);                                              \
+      tests_failed++;                                                          \
+      return;                                                                  \
+    }                                                                          \
+  } while (0)
+
+/* ============================================================================
+ * Test Strings
+ * ============================================================================
+ */
+
+/* ASCII */
+static const char *ASCII = "Hello";
+static const size_t ASCII_LEN = 5;
+
+/* UTF-8 with combining marks: cafe with acute accent */
+/* "café" where é is e + combining acute (U+0065 U+0301) */
+static const char *CAFE_DECOMPOSED = "cafe\xCC\x81";
+static const size_t CAFE_DECOMPOSED_LEN = 6;
+
+/* "café" where é is precomposed (U+00E9) */
+static const char *CAFE_COMPOSED = "caf\xC3\xA9";
+static const size_t CAFE_COMPOSED_LEN = 5;
+
+/* Single emoji: 😀 (U+1F600) */
+static const char *EMOJI_SIMPLE = "\xF0\x9F\x98\x80";
+static const size_t EMOJI_SIMPLE_LEN = 4;
+
+/* ZWJ family sequence: 👨‍👩‍👧 (man + ZWJ + woman + ZWJ + girl) */
+static const char *FAMILY = "\xF0\x9F\x91\xA8\xE2\x80\x8D\xF0\x9F\x91\xA9"
+                            "\xE2\x80\x8D\xF0\x9F\x91\xA7";
+static const size_t FAMILY_LEN = 18;
+
+/* Just the woman from family: 👩 (U+1F469) */
+static const char *WOMAN = "\xF0\x9F\x91\xA9";
+static const size_t WOMAN_LEN = 4;
+
+/* Flag: 🇨🇦 (Canada - two regional indicators) */
+static const char *FLAG_CA = "\xF0\x9F\x87\xA8\xF0\x9F\x87\xA6";
+static const size_t FLAG_CA_LEN = 8;
+
+/* Emoji with skin tone: 👋🏽 (waving hand + medium skin tone) */
+static const char *WAVE_SKIN = "\xF0\x9F\x91\x8B\xF0\x9F\x8F\xBD";
+static const size_t WAVE_SKIN_LEN = 8;
+
+/* Mixed string: "Hi 👋🏽!" */
+static const char *MIXED = "Hi \xF0\x9F\x91\x8B\xF0\x9F\x8F\xBD!";
+static const size_t MIXED_LEN = 12;
+
+/* Korean Hangul: 한글 */
+static const char *HANGUL = "\xED\x95\x9C\xEA\xB8\x80";
+static const size_t HANGUL_LEN = 6;
+
+/* ============================================================================
+ * Length Tests (gstrlen, gstrnlen)
+ * ============================================================================
+ */
+
+TEST(gstrlen_ascii) { ASSERT_EQ_SIZE(gstrlen(ASCII, ASCII_LEN), 5); }
+
+TEST(gstrlen_empty) { ASSERT_EQ_SIZE(gstrlen("", 0), 0); }
+
+TEST(gstrlen_null) { ASSERT_EQ_SIZE(gstrlen(NULL, 0), 0); }
+
+TEST(gstrlen_emoji_simple) {
+  ASSERT_EQ_SIZE(gstrlen(EMOJI_SIMPLE, EMOJI_SIMPLE_LEN), 1);
+}
+
+TEST(gstrlen_family_zwj) {
+  /* Family emoji is ONE grapheme despite being 18 bytes */
+  ASSERT_EQ_SIZE(gstrlen(FAMILY, FAMILY_LEN), 1);
+}
+
+TEST(gstrlen_flag) {
+  /* Flag is ONE grapheme (two regional indicators) */
+  ASSERT_EQ_SIZE(gstrlen(FLAG_CA, FLAG_CA_LEN), 1);
+}
+
+TEST(gstrlen_skin_tone) {
+  /* Emoji + skin tone is ONE grapheme */
+  ASSERT_EQ_SIZE(gstrlen(WAVE_SKIN, WAVE_SKIN_LEN), 1);
+}
+
+TEST(gstrlen_combining_marks) {
+  /* "café" with decomposed é is 4 graphemes */
+  ASSERT_EQ_SIZE(gstrlen(CAFE_DECOMPOSED, CAFE_DECOMPOSED_LEN), 4);
+}
+
+TEST(gstrlen_mixed) {
+  /* "Hi 👋🏽!" = H + i + space + wave+skin + ! = 5 graphemes */
+  ASSERT_EQ_SIZE(gstrlen(MIXED, MIXED_LEN), 5);
+}
+
+TEST(gstrlen_hangul) {
+  /* 한글 = 2 graphemes */
+  ASSERT_EQ_SIZE(gstrlen(HANGUL, HANGUL_LEN), 2);
+}
+
+TEST(gstrnlen_basic) {
+  ASSERT_EQ_SIZE(gstrnlen(ASCII, ASCII_LEN, 3), 3);
+  ASSERT_EQ_SIZE(gstrnlen(ASCII, ASCII_LEN, 10), 5);
+}
+
+TEST(gstrnlen_mixed) {
+  /* "Hi 👋🏽!" - count first 3 graphemes */
+  ASSERT_EQ_SIZE(gstrnlen(MIXED, MIXED_LEN, 3), 3);
+}
+
+/* ============================================================================
+ * Indexing Tests (gstroff, gstrat)
+ * ============================================================================
+ */
+
+TEST(gstroff_ascii) {
+  ASSERT_EQ_SIZE(gstroff(ASCII, ASCII_LEN, 0), 0);
+  ASSERT_EQ_SIZE(gstroff(ASCII, ASCII_LEN, 1), 1);
+  ASSERT_EQ_SIZE(gstroff(ASCII, ASCII_LEN, 4), 4);
+  ASSERT_EQ_SIZE(gstroff(ASCII, ASCII_LEN, 5), 5); /* past end */
+}
+
+TEST(gstroff_mixed) {
+  /* "Hi 👋🏽!" */
+  ASSERT_EQ_SIZE(gstroff(MIXED, MIXED_LEN, 0), 0);  /* H */
+  ASSERT_EQ_SIZE(gstroff(MIXED, MIXED_LEN, 1), 1);  /* i */
+  ASSERT_EQ_SIZE(gstroff(MIXED, MIXED_LEN, 2), 2);  /* space */
+  ASSERT_EQ_SIZE(gstroff(MIXED, MIXED_LEN, 3), 3);  /* wave+skin (8 bytes) */
+  ASSERT_EQ_SIZE(gstroff(MIXED, MIXED_LEN, 4), 11); /* ! */
+}
+
+TEST(gstrat_ascii) {
+  size_t len;
+  const char *p = gstrat(ASCII, ASCII_LEN, 0, &len);
+  ASSERT_NOT_NULL(p);
+  ASSERT_EQ_SIZE(len, 1);
+  ASSERT(*p == 'H');
+}
+
+TEST(gstrat_emoji) {
+  size_t len;
+  const char *p = gstrat(MIXED, MIXED_LEN, 3, &len);
+  ASSERT_NOT_NULL(p);
+  ASSERT_EQ_SIZE(len, 8); /* wave + skin tone modifier */
+  ASSERT(memcmp(p, WAVE_SKIN, 8) == 0);
+}
+
+TEST(gstrat_out_of_bounds) {
+  size_t len;
+  const char *p = gstrat(ASCII, ASCII_LEN, 10, &len);
+  ASSERT_NULL(p);
+}
+
+TEST(gstrat_family) {
+  size_t len;
+  const char *p = gstrat(FAMILY, FAMILY_LEN, 0, &len);
+  ASSERT_NOT_NULL(p);
+  ASSERT_EQ_SIZE(len, 18); /* entire family emoji is one grapheme */
+}
+
+/* ============================================================================
+ * Comparison Tests (gstrcmp, gstrncmp, gstrcasecmp)
+ * ============================================================================
+ */
+
+TEST(gstrcmp_equal_ascii) { ASSERT_EQ(gstrcmp("hello", 5, "hello", 5), 0); }
+
+TEST(gstrcmp_less_ascii) { ASSERT(gstrcmp("abc", 3, "abd", 3) < 0); }
+
+TEST(gstrcmp_greater_ascii) { ASSERT(gstrcmp("abd", 3, "abc", 3) > 0); }
+
+TEST(gstrcmp_shorter) {
+  /* Shorter string is "less" */
+  ASSERT(gstrcmp("ab", 2, "abc", 3) < 0);
+}
+
+TEST(gstrcmp_longer) { ASSERT(gstrcmp("abc", 3, "ab", 2) > 0); }
+
+TEST(gstrcmp_emoji) {
+  ASSERT_EQ(gstrcmp(FAMILY, FAMILY_LEN, FAMILY, FAMILY_LEN), 0);
+}
+
+TEST(gstrcmp_different_normalization) {
+  /* café composed vs decomposed should NOT be equal (byte-exact) */
+  ASSERT(gstrcmp(CAFE_COMPOSED, CAFE_COMPOSED_LEN, CAFE_DECOMPOSED,
+                 CAFE_DECOMPOSED_LEN) != 0);
+}
+
+TEST(gstrncmp_basic) {
+  ASSERT_EQ(gstrncmp("hello", 5, "help", 4, 3), 0);
+  ASSERT(gstrncmp("hello", 5, "help", 4, 4) < 0);
+}
+
+TEST(gstrncmp_mixed) {
+  /* Compare first 3 graphemes of "Hi 👋🏽!" */
+  ASSERT_EQ(gstrncmp(MIXED, MIXED_LEN, "Hi X", 4, 3), 0);
+}
+
+TEST(gstrcasecmp_basic) {
+  ASSERT_EQ(gstrcasecmp("Hello", 5, "hello", 5), 0);
+  ASSERT_EQ(gstrcasecmp("HELLO", 5, "hello", 5), 0);
+}
+
+TEST(gstrcasecmp_different) { ASSERT(gstrcasecmp("abc", 3, "ABD", 3) < 0); }
+
+/* ============================================================================
+ * Search Tests (gstrchr, gstrrchr, gstrstr)
+ * ============================================================================
+ */
+
+TEST(gstrchr_ascii) {
+  const char *p = gstrchr("hello", 5, "l", 1);
+  ASSERT_NOT_NULL(p);
+  ASSERT_EQ_SIZE((size_t)(p - "hello"), 2);
+}
+
+TEST(gstrchr_not_found) {
+  const char *p = gstrchr("hello", 5, "x", 1);
+  ASSERT_NULL(p);
+}
+
+TEST(gstrchr_emoji) {
+  /* Find wave emoji in mixed string */
+  const char *p = gstrchr(MIXED, MIXED_LEN, WAVE_SKIN, WAVE_SKIN_LEN);
+  ASSERT_NOT_NULL(p);
+  ASSERT_EQ_SIZE((size_t)(p - MIXED), 3);
+}
+
+TEST(gstrchr_partial_emoji_not_found) {
+  /* Should NOT find 👩 inside 👨‍👩‍👧 - grapheme boundary
+   * semantics
+   */
+  const char *p = gstrchr(FAMILY, FAMILY_LEN, WOMAN, WOMAN_LEN);
+  ASSERT_NULL(p);
+}
+
+TEST(gstrrchr_basic) {
+  const char *p = gstrrchr("hello", 5, "l", 1);
+  ASSERT_NOT_NULL(p);
+  ASSERT_EQ_SIZE((size_t)(p - "hello"), 3); /* second 'l' */
+}
+
+TEST(gstrrchr_single_match) {
+  const char *p = gstrrchr("hello", 5, "h", 1);
+  ASSERT_NOT_NULL(p);
+  ASSERT_EQ_SIZE((size_t)(p - "hello"), 0);
+}
+
+TEST(gstrstr_basic) {
+  const char *p = gstrstr("hello world", 11, "world", 5);
+  ASSERT_NOT_NULL(p);
+  ASSERT_EQ_SIZE((size_t)(p - "hello world"), 6);
+}
+
+TEST(gstrstr_at_start) {
+  const char *p = gstrstr("hello", 5, "hel", 3);
+  ASSERT_NOT_NULL(p);
+  ASSERT_EQ_SIZE((size_t)(p - "hello"), 0);
+}
+
+TEST(gstrstr_at_end) {
+  const char *p = gstrstr("hello", 5, "llo", 3);
+  ASSERT_NOT_NULL(p);
+  ASSERT_EQ_SIZE((size_t)(p - "hello"), 2);
+}
+
+TEST(gstrstr_not_found) {
+  const char *p = gstrstr("hello", 5, "xyz", 3);
+  ASSERT_NULL(p);
+}
+
+TEST(gstrstr_empty_needle) {
+  const char *haystack = "hello";
+  const char *p = gstrstr(haystack, 5, "", 0);
+  ASSERT_NOT_NULL(p);
+  ASSERT(p == haystack);
+}
+
+TEST(gstrstr_emoji) {
+  /* Search for single emoji in family - should NOT find */
+  const char *p = gstrstr(FAMILY, FAMILY_LEN, WOMAN, WOMAN_LEN);
+  ASSERT_NULL(p);
+}
+
+TEST(gstrstr_full_match) {
+  /* Search for entire family - should find */
+  const char *p = gstrstr(FAMILY, FAMILY_LEN, FAMILY, FAMILY_LEN);
+  ASSERT_NOT_NULL(p);
+}
+
+/* ============================================================================
+ * Span Tests (gstrspn, gstrcspn, gstrpbrk)
+ * ============================================================================
+ */
+
+TEST(gstrspn_basic) {
+  size_t n = gstrspn("aaabbc", 6, "ab", 2);
+  ASSERT_EQ_SIZE(n, 5);
+}
+
+TEST(gstrspn_no_match) {
+  size_t n = gstrspn("hello", 5, "xyz", 3);
+  ASSERT_EQ_SIZE(n, 0);
+}
+
+TEST(gstrspn_all_match) {
+  size_t n = gstrspn("aaa", 3, "a", 1);
+  ASSERT_EQ_SIZE(n, 3);
+}
+
+TEST(gstrcspn_basic) {
+  size_t n = gstrcspn("hello", 5, "lo", 2);
+  ASSERT_EQ_SIZE(n, 2); /* 'h' and 'e' before 'l' */
+}
+
+TEST(gstrcspn_no_reject) {
+  size_t n = gstrcspn("hello", 5, "xyz", 3);
+  ASSERT_EQ_SIZE(n, 5);
+}
+
+TEST(gstrpbrk_basic) {
+  const char *p = gstrpbrk("hello", 5, "lo", 2);
+  ASSERT_NOT_NULL(p);
+  ASSERT_EQ_SIZE((size_t)(p - "hello"), 2);
+}
+
+TEST(gstrpbrk_not_found) {
+  const char *p = gstrpbrk("hello", 5, "xyz", 3);
+  ASSERT_NULL(p);
+}
+
+/* ============================================================================
+ * Extraction Tests (gstrsub)
+ * ============================================================================
+ */
+
+TEST(gstrsub_basic) {
+  char buf[32];
+  size_t n = gstrsub(buf, sizeof(buf), "hello world", 11, 0, 5);
+  ASSERT_EQ_SIZE(n, 5);
+  ASSERT_STR_EQ(buf, "hello");
+}
+
+TEST(gstrsub_middle) {
+  char buf[32];
+  size_t n = gstrsub(buf, sizeof(buf), "hello world", 11, 6, 5);
+  ASSERT_EQ_SIZE(n, 5);
+  ASSERT_STR_EQ(buf, "world");
+}
+
+TEST(gstrsub_emoji) {
+  char buf[32];
+  /* Extract the wave emoji from "Hi 👋🏽!" */
+  size_t n = gstrsub(buf, sizeof(buf), MIXED, MIXED_LEN, 3, 1);
+  ASSERT_EQ_SIZE(n, 8);
+  ASSERT(memcmp(buf, WAVE_SKIN, 8) == 0);
+}
+
+TEST(gstrsub_beyond_end) {
+  char buf[32];
+  size_t n = gstrsub(buf, sizeof(buf), "hello", 5, 3, 10);
+  ASSERT_EQ_SIZE(n, 2);
+  ASSERT_STR_EQ(buf, "lo");
+}
+
+TEST(gstrsub_buffer_overflow) {
+  char buf[4];
+  size_t n = gstrsub(buf, sizeof(buf), "hello", 5, 0, 5);
+  ASSERT_EQ_SIZE(n, 3); /* Only "hel" fits with null terminator */
+  ASSERT_STR_EQ(buf, "hel");
+}
+
+/* ============================================================================
+ * Copy Tests (gstrcpy, gstrncpy)
+ * ============================================================================
+ */
+
+TEST(gstrcpy_basic) {
+  char buf[32];
+  size_t n = gstrcpy(buf, sizeof(buf), "hello", 5);
+  ASSERT_EQ_SIZE(n, 5);
+  ASSERT_STR_EQ(buf, "hello");
+}
+
+TEST(gstrcpy_emoji) {
+  char buf[32];
+  size_t n = gstrcpy(buf, sizeof(buf), FAMILY, FAMILY_LEN);
+  ASSERT_EQ_SIZE(n, 18);
+  ASSERT(memcmp(buf, FAMILY, 18) == 0);
+}
+
+TEST(gstrcpy_buffer_too_small) {
+  char buf[4];
+  size_t n = gstrcpy(buf, sizeof(buf), "hello", 5);
+  ASSERT_EQ_SIZE(n, 3); /* Only complete graphemes that fit */
+  ASSERT_STR_EQ(buf, "hel");
+}
+
+TEST(gstrcpy_emoji_truncate) {
+  char buf[6]; /* Not enough for 8-byte emoji */
+  size_t n = gstrcpy(buf, sizeof(buf), WAVE_SKIN, WAVE_SKIN_LEN);
+  ASSERT_EQ_SIZE(n, 0); /* Can't fit complete grapheme */
+  ASSERT_STR_EQ(buf, "");
+}
+
+TEST(gstrncpy_basic) {
+  char buf[32];
+  size_t n = gstrncpy(buf, sizeof(buf), "hello", 5, 3);
+  ASSERT_EQ_SIZE(n, 3);
+  ASSERT_STR_EQ(buf, "hel");
+}
+
+TEST(gstrncpy_more_than_available) {
+  char buf[32];
+  size_t n = gstrncpy(buf, sizeof(buf), "hi", 2, 10);
+  ASSERT_EQ_SIZE(n, 2);
+  ASSERT_STR_EQ(buf, "hi");
+}
+
+TEST(gstrncpy_mixed) {
+  char buf[32];
+  /* Copy first 4 graphemes of "Hi 👋🏽!" = "Hi 👋🏽" */
+  size_t n = gstrncpy(buf, sizeof(buf), MIXED, MIXED_LEN, 4);
+  ASSERT_EQ_SIZE(n, 11);
+  ASSERT(memcmp(buf, "Hi \xF0\x9F\x91\x8B\xF0\x9F\x8F\xBD", 11) == 0);
+}
+
+/* ============================================================================
+ * Concatenation Tests (gstrcat, gstrncat)
+ * ============================================================================
+ */
+
+TEST(gstrcat_basic) {
+  char buf[32] = "hello";
+  size_t n = gstrcat(buf, sizeof(buf), " world", 6);
+  ASSERT_EQ_SIZE(n, 11);
+  ASSERT_STR_EQ(buf, "hello world");
+}
+
+TEST(gstrcat_buffer_limit) {
+  char buf[8] = "hi";
+  size_t n = gstrcat(buf, sizeof(buf), "hello", 5);
+  ASSERT_EQ_SIZE(n, 7); /* "hi" (2) + "hello" (5) = 7, fits in 8 with null */
+  ASSERT_STR_EQ(buf, "hihello");
+}
+
+TEST(gstrcat_truncate) {
+  char buf[6] = "hi";
+  size_t n = gstrcat(buf, sizeof(buf), "hello", 5);
+  ASSERT_EQ_SIZE(n, 5); /* "hi" (2) + "hel" (3) = 5, fits in 6 with null */
+  ASSERT_STR_EQ(buf, "hihel");
+}
+
+TEST(gstrcat_emoji) {
+  char buf[32] = "Hi ";
+  size_t n = gstrcat(buf, sizeof(buf), WAVE_SKIN, WAVE_SKIN_LEN);
+  ASSERT_EQ_SIZE(n, 11);
+}
+
+TEST(gstrncat_basic) {
+  char buf[32] = "hello";
+  size_t n = gstrncat(buf, sizeof(buf), " world", 6, 3);
+  ASSERT_EQ_SIZE(n, 8);
+  ASSERT_STR_EQ(buf, "hello wo");
+}
+
+TEST(gstrncat_emoji) {
+  char buf[32] = "Hi";
+  /* Append 1 grapheme (the wave+skin) from mixed string starting at offset 3
+   */
+  size_t n = gstrncat(buf, sizeof(buf), WAVE_SKIN, WAVE_SKIN_LEN, 1);
+  ASSERT_EQ_SIZE(n, 10);
+}
+
+/* ============================================================================
+ * Edge Cases
+ * ============================================================================
+ */
+
+TEST(null_inputs) {
+  ASSERT_EQ_SIZE(gstrlen(NULL, 5), 0);
+  ASSERT_EQ_SIZE(gstroff(NULL, 5, 0), 0);
+  ASSERT_NULL(gstrat(NULL, 5, 0, NULL));
+  ASSERT_EQ(gstrcmp(NULL, 0, NULL, 0), 0);
+  ASSERT(gstrcmp(NULL, 0, "a", 1) < 0);
+  ASSERT(gstrcmp("a", 1, NULL, 0) > 0);
+  ASSERT_NULL(gstrchr(NULL, 5, "a", 1));
+  ASSERT_NULL(gstrstr(NULL, 5, "a", 1));
+}
+
+TEST(empty_strings) {
+  ASSERT_EQ_SIZE(gstrlen("", 0), 0);
+  ASSERT_EQ(gstrcmp("", 0, "", 0), 0);
+  ASSERT(gstrcmp("", 0, "a", 1) < 0);
+
+  char buf[8] = "";
+  ASSERT_EQ_SIZE(gstrcat(buf, sizeof(buf), "", 0), 0);
+}
+
+TEST(single_grapheme_strings) {
+  ASSERT_EQ_SIZE(gstrlen("a", 1), 1);
+  ASSERT_EQ_SIZE(gstrlen(EMOJI_SIMPLE, EMOJI_SIMPLE_LEN), 1);
+  ASSERT_EQ_SIZE(gstrlen(FAMILY, FAMILY_LEN), 1);
+}
+
+/* ============================================================================
+ * Main
+ * ============================================================================
+ */
+
+int main(void) {
+  printf("\ngstr.h - Grapheme String Library Tests\n");
+  printf("Version: %s\n", GSTR_VERSION);
+  printf("Build: %s\n\n", GSTR_BUILD_ID);
+
+  printf("Length Tests:\n");
+  RUN(gstrlen_ascii);
+  RUN(gstrlen_empty);
+  RUN(gstrlen_null);
+  RUN(gstrlen_emoji_simple);
+  RUN(gstrlen_family_zwj);
+  RUN(gstrlen_flag);
+  RUN(gstrlen_skin_tone);
+  RUN(gstrlen_combining_marks);
+  RUN(gstrlen_mixed);
+  RUN(gstrlen_hangul);
+  RUN(gstrnlen_basic);
+  RUN(gstrnlen_mixed);
+
+  printf("\nIndexing Tests:\n");
+  RUN(gstroff_ascii);
+  RUN(gstroff_mixed);
+  RUN(gstrat_ascii);
+  RUN(gstrat_emoji);
+  RUN(gstrat_out_of_bounds);
+  RUN(gstrat_family);
+
+  printf("\nComparison Tests:\n");
+  RUN(gstrcmp_equal_ascii);
+  RUN(gstrcmp_less_ascii);
+  RUN(gstrcmp_greater_ascii);
+  RUN(gstrcmp_shorter);
+  RUN(gstrcmp_longer);
+  RUN(gstrcmp_emoji);
+  RUN(gstrcmp_different_normalization);
+  RUN(gstrncmp_basic);
+  RUN(gstrncmp_mixed);
+  RUN(gstrcasecmp_basic);
+  RUN(gstrcasecmp_different);
+
+  printf("\nSearch Tests:\n");
+  RUN(gstrchr_ascii);
+  RUN(gstrchr_not_found);
+  RUN(gstrchr_emoji);
+  RUN(gstrchr_partial_emoji_not_found);
+  RUN(gstrrchr_basic);
+  RUN(gstrrchr_single_match);
+  RUN(gstrstr_basic);
+  RUN(gstrstr_at_start);
+  RUN(gstrstr_at_end);
+  RUN(gstrstr_not_found);
+  RUN(gstrstr_empty_needle);
+  RUN(gstrstr_emoji);
+  RUN(gstrstr_full_match);
+
+  printf("\nSpan Tests:\n");
+  RUN(gstrspn_basic);
+  RUN(gstrspn_no_match);
+  RUN(gstrspn_all_match);
+  RUN(gstrcspn_basic);
+  RUN(gstrcspn_no_reject);
+  RUN(gstrpbrk_basic);
+  RUN(gstrpbrk_not_found);
+
+  printf("\nExtraction Tests:\n");
+  RUN(gstrsub_basic);
+  RUN(gstrsub_middle);
+  RUN(gstrsub_emoji);
+  RUN(gstrsub_beyond_end);
+  RUN(gstrsub_buffer_overflow);
+
+  printf("\nCopy Tests:\n");
+  RUN(gstrcpy_basic);
+  RUN(gstrcpy_emoji);
+  RUN(gstrcpy_buffer_too_small);
+  RUN(gstrcpy_emoji_truncate);
+  RUN(gstrncpy_basic);
+  RUN(gstrncpy_more_than_available);
+  RUN(gstrncpy_mixed);
+
+  printf("\nConcatenation Tests:\n");
+  RUN(gstrcat_basic);
+  RUN(gstrcat_buffer_limit);
+  RUN(gstrcat_truncate);
+  RUN(gstrcat_emoji);
+  RUN(gstrncat_basic);
+  RUN(gstrncat_emoji);
+
+  printf("\nEdge Cases:\n");
+  RUN(null_inputs);
+  RUN(empty_strings);
+  RUN(single_grapheme_strings);
+
+  printf("\n----------------------------------------\n");
+  printf("Tests passed: %d\n", tests_passed);
+  printf("Tests failed: %d\n", tests_failed);
+  printf("----------------------------------------\n");
+
+  return tests_failed > 0 ? 1 : 0;
+}

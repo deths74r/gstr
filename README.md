@@ -2,6 +2,49 @@
 
 A lightweight, zero-dependency UTF-8 library for C. See [UTF-8 Everywhere](https://utf8everywhere.org/) for why UTF-8 is the recommended encoding for all text.
 
+## Development Branch: gstr.h
+
+> **The `gstr-dev` branch contains gstr.h** - a grapheme-first equivalent to string.h. Where string.h operates on bytes, gstr.h operates on grapheme clusters.
+
+```c
+// string.h (bytes)
+strlen("👨‍👩‍👧")  → 18
+
+// gstr.h (graphemes)
+gstrlen("👨‍👩‍👧", 18) → 1
+```
+
+### What's in gstr-dev?
+
+**18 grapheme-aware string functions:**
+
+| Category | Functions |
+|----------|-----------|
+| Length | `gstrlen`, `gstrnlen` |
+| Indexing | `gstroff`, `gstrat` |
+| Comparison | `gstrcmp`, `gstrncmp`, `gstrcasecmp` |
+| Search | `gstrchr`, `gstrrchr`, `gstrstr` |
+| Span | `gstrspn`, `gstrcspn`, `gstrpbrk` |
+| Extraction | `gstrsub` |
+| Copy | `gstrcpy`, `gstrncpy` |
+| Concatenation | `gstrcat`, `gstrncat` |
+
+### Design Decisions
+
+- **Unit of operation**: Grapheme cluster (UAX #29)
+- **Equality**: Byte-exact (`é` precomposed ≠ `é` decomposed)
+- **Search**: Complete graphemes only (won't find 👩 inside 👨‍👩‍👧)
+
+### Try It
+
+```bash
+git checkout gstr-dev
+make test-gstr        # Run 70 grapheme string tests
+make test-gstr-single # Test single-header version
+```
+
+---
+
 ## News
 
 ### v1.5.3 (January 2026)
