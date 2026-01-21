@@ -130,13 +130,17 @@ make test-gstr-single # Test single-header version
 ```
 utflite/
 ├── include/utflite/      # Public headers
-│   └── utflite.h
-├── single_include/       # Single-header distribution
-│   └── utflite.h
-├── src/                  # Implementation
-│   └── utflite.c
+│   ├── utflite.h         # Core UTF-8 and grapheme primitives
+│   └── gstr.h            # Grapheme string operations
+├── single_include/       # Single-header distributions
+│   ├── utflite.h         # Core library only
+│   └── gstr.h            # Grapheme strings (includes utflite)
+├── src/
+│   ├── utflite.c         # Core implementation
+│   └── gstr.c            # Grapheme string implementation
 ├── test/
-│   └── test_utflite.c
+│   ├── test_utflite.c    # Core tests (64 tests)
+│   └── test_gstr.c       # Grapheme string tests (70 tests)
 └── build/                # Build artifacts (gitignored)
 ```
 
@@ -305,7 +309,6 @@ int main(void) {
 
     return 0;
 }
-```
 ```
 
 This is essential for:
@@ -522,9 +525,12 @@ int utflite_truncate(const char *text, int length, int max_cols);
 ## Building
 
 ```bash
-make              # Build static library (output in build/)
-make test         # Run tests with static library
-make test-single  # Run tests with single-header version
+make              # Build static library and single-headers
+make test         # Run utflite tests with static library
+make test-single  # Run utflite tests with single-header
+make test-gstr    # Run gstr tests with static library
+make test-gstr-single  # Run gstr tests with single-header
+make test-all     # Run all tests (134 total)
 make install      # Install to /usr/local
 make clean        # Clean build artifacts
 ```
