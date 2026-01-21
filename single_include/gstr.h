@@ -1,7 +1,7 @@
 /*
  * gstr.h - Single-header grapheme string library
- * Version: 1.5.3
- * Build: 248f210-20260121-125102
+ * Version: 1.5.3+gstr-dev
+ * Build: 9acb4fe-20260121-135916
  *
  * Usage:
  *   #define GSTR_IMPLEMENTATION
@@ -13,10 +13,10 @@
 
 /* Version info (can be overridden at compile time) */
 #ifndef GSTR_VERSION
-#define GSTR_VERSION "1.5.3"
+#define GSTR_VERSION "1.5.3+gstr-dev"
 #endif
 #ifndef GSTR_BUILD_ID
-#define GSTR_BUILD_ID "248f210-20260121-125102"
+#define GSTR_BUILD_ID "9acb4fe-20260121-135916"
 #endif
 
 /* ============================================================================
@@ -2344,9 +2344,22 @@ size_t gstrsub(char *dst, size_t dst_size, const char *src, size_t src_len,
 
   size_t bytes_to_copy = (size_t)offset - start_offset;
 
-  /* Ensure we don't overflow dst */
-  if (bytes_to_copy >= dst_size)
-    bytes_to_copy = dst_size - 1;
+  /* Ensure we don't overflow dst - find last complete grapheme that fits */
+  if (bytes_to_copy >= dst_size) {
+    int fit_offset = (int)start_offset;
+    int last_complete = (int)start_offset;
+
+    while ((size_t)fit_offset < start_offset + bytes_to_copy) {
+      int next = utflite_next_grapheme(src, (int)src_len, fit_offset);
+      if ((size_t)(next - (int)start_offset) < dst_size) {
+        last_complete = next;
+      } else {
+        break;
+      }
+      fit_offset = next;
+    }
+    bytes_to_copy = (size_t)(last_complete - (int)start_offset);
+  }
 
   memcpy(dst, src + start_offset, bytes_to_copy);
   dst[bytes_to_copy] = '\0';

@@ -483,9 +483,22 @@ size_t gstrsub(char *dst, size_t dst_size, const char *src, size_t src_len,
 
   size_t bytes_to_copy = (size_t)offset - start_offset;
 
-  /* Ensure we don't overflow dst */
-  if (bytes_to_copy >= dst_size)
-    bytes_to_copy = dst_size - 1;
+  /* Ensure we don't overflow dst - find last complete grapheme that fits */
+  if (bytes_to_copy >= dst_size) {
+    int fit_offset = (int)start_offset;
+    int last_complete = (int)start_offset;
+
+    while ((size_t)fit_offset < start_offset + bytes_to_copy) {
+      int next = utflite_next_grapheme(src, (int)src_len, fit_offset);
+      if ((size_t)(next - (int)start_offset) < dst_size) {
+        last_complete = next;
+      } else {
+        break;
+      }
+      fit_offset = next;
+    }
+    bytes_to_copy = (size_t)(last_complete - (int)start_offset);
+  }
 
   memcpy(dst, src + start_offset, bytes_to_copy);
   dst[bytes_to_copy] = '\0';
