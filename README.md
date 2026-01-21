@@ -4,6 +4,10 @@ A lightweight, zero-dependency UTF-8 library for C. See [UTF-8 Everywhere](https
 
 ## News
 
+### v1.5.3 (January 2026)
+- **New**: `utflite_grapheme_count()` - count user-perceived characters directly
+- Improved test coverage: 17 new tests for char_width, grapheme_count, and truncate edge cases
+- Rewrote API documentation to natural language style
 ### v1.5.2 (January 2026)
 - **Fix**: Skin tone modifiers (U+1F3FB-U+1F3FF) now correctly zero-width
 - **Fix**: Regional Indicators (U+1F1E6-U+1F1FF) now correctly double-width for flag emoji
@@ -232,41 +236,33 @@ A "character" to users isn't always a single codepoint. Emoji sequences, combini
 #include <stdio.h>
 #include <string.h>
 
-int count_graphemes(const char *text, int len) {
-    int count = 0, offset = 0;
-    while (offset < len) {
-        offset = utflite_next_grapheme(text, len, offset);
-        count++;
-    }
-    return count;
-}
-
 int main(void) {
     // Family emoji: 7 codepoints, but 1 grapheme
     const char *family = "\xF0\x9F\x91\xA8\xE2\x80\x8D\xF0\x9F\x91\xA9\xE2\x80\x8D\xF0\x9F\x91\xA7";
     int len = strlen(family);
 
     printf("Family emoji:\n");
-    printf("  Bytes: %d\n", len);                              // 18
+    printf("  Bytes: %d\n", len);                                       // 18
     printf("  Codepoints: %d\n", utflite_codepoint_count(family, len));  // 7
-    printf("  Graphemes: %d\n", count_graphemes(family, len)); // 1
+    printf("  Graphemes: %d\n", utflite_grapheme_count(family, len));    // 1
 
     // e + combining acute accent = 1 grapheme
     const char *accent = "e\xCC\x81";  // é as e + U+0301
     len = strlen(accent);
     printf("\ne + acute accent:\n");
     printf("  Codepoints: %d\n", utflite_codepoint_count(accent, len));  // 2
-    printf("  Graphemes: %d\n", count_graphemes(accent, len)); // 1
+    printf("  Graphemes: %d\n", utflite_grapheme_count(accent, len));    // 1
 
     // Flag: 2 regional indicators = 1 grapheme
     const char *flag = "\xF0\x9F\x87\xA8\xF0\x9F\x87\xA6";  // 🇨🇦
     len = strlen(flag);
     printf("\nCanadian flag:\n");
     printf("  Codepoints: %d\n", utflite_codepoint_count(flag, len));  // 2
-    printf("  Graphemes: %d\n", count_graphemes(flag, len)); // 1
+    printf("  Graphemes: %d\n", utflite_grapheme_count(flag, len));    // 1
 
     return 0;
 }
+```
 ```
 
 This is essential for:
@@ -466,6 +462,8 @@ int utflite_validate(const char *text, int length, int *error_offset);
 
 // Count codepoints in string
 int utflite_codepoint_count(const char *text, int length);
+// Count grapheme clusters (user-perceived characters)
+int utflite_grapheme_count(const char *text, int length);
 
 // Calculate display width of string
 int utflite_string_width(const char *text, int length);
