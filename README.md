@@ -306,7 +306,6 @@ int main(void) {
     return 0;
 }
 ```
-```
 
 This is essential for:
 - Cursor movement in text editors
