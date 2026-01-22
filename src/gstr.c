@@ -870,8 +870,14 @@ size_t gstrcount(const char *s, size_t len, const char *needle, size_t n_len) {
  */
 const char *gstrsep(const char **stringp, size_t *lenp, const char *delim,
                     size_t d_len, size_t *tok_len) {
-  if (!stringp || !*stringp || !lenp || *lenp == 0)
+  if (!stringp || !*stringp || !lenp)
     return NULL;
+
+  /* Exhausted - set stringp to NULL to signal end */
+  if (*lenp == 0) {
+    *stringp = NULL;
+    return NULL;
+  }
   const char *start = *stringp;
   size_t len = *lenp;
   /* Handle empty delimiter - return entire string */

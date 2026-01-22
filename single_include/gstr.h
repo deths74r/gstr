@@ -1,7 +1,7 @@
 /*
  * gstr.h - Single-header grapheme string library
  * Version: 1.5.3+gstr-dev
- * Build: fd726b9-20260122-104324
+ * Build: a312ed3-20260122-111420
  *
  * Usage:
  *   #define GSTR_IMPLEMENTATION
@@ -16,7 +16,7 @@
 #define GSTR_VERSION "1.5.3+gstr-dev"
 #endif
 #ifndef GSTR_BUILD_ID
-#define GSTR_BUILD_ID "fd726b9-20260122-104324"
+#define GSTR_BUILD_ID "a312ed3-20260122-111420"
 #endif
 
 /* ============================================================================
@@ -2855,8 +2855,14 @@ size_t gstrcount(const char *s, size_t len, const char *needle, size_t n_len) {
  */
 const char *gstrsep(const char **stringp, size_t *lenp, const char *delim,
                     size_t d_len, size_t *tok_len) {
-  if (!stringp || !*stringp || !lenp || *lenp == 0)
+  if (!stringp || !*stringp || !lenp)
     return NULL;
+
+  /* Exhausted - set stringp to NULL to signal end */
+  if (*lenp == 0) {
+    *stringp = NULL;
+    return NULL;
+  }
   const char *start = *stringp;
   size_t len = *lenp;
   /* Handle empty delimiter - return entire string */
