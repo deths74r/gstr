@@ -213,6 +213,130 @@ size_t gstrcat(char *dst, size_t dst_size, const char *src, size_t src_len);
 size_t gstrncat(char *dst, size_t dst_size, const char *src, size_t src_len,
                 size_t n);
 
+/* ============================================================================
+ * Additional Comparison Functions
+ * ============================================================================
+ */
+
+/*
+ * Case-insensitive comparison of first n graphemes (ASCII only).
+ * Non-ASCII characters are compared byte-exact.
+ * Returns <0 if a < b, 0 if equal, >0 if a > b.
+ */
+int gstrncasecmp(const char *a, size_t a_len, const char *b, size_t b_len,
+                 size_t n);
+
+/* ============================================================================
+ * Allocation Functions
+ * ============================================================================
+ */
+
+/*
+ * Allocates and copies entire string.
+ * Returns malloc'd buffer containing the string.
+ * Caller must free() the returned pointer.
+ * Returns NULL on allocation failure or NULL input.
+ */
+char *gstrdup(const char *s, size_t len);
+
+/*
+ * Allocates and copies first n graphemes.
+ * Returns malloc'd buffer containing up to n graphemes.
+ * Caller must free() the returned pointer.
+ * Returns NULL on allocation failure or NULL input.
+ */
+char *gstrndup(const char *s, size_t len, size_t n);
+
+/* ============================================================================
+ * Additional Search Functions
+ * ============================================================================
+ */
+
+/*
+ * Finds last occurrence of needle substring in haystack.
+ * Both strings are treated as sequences of graphemes.
+ * Match must align on grapheme boundaries.
+ * Returns pointer to match, or NULL if not found.
+ */
+const char *gstrrstr(const char *haystack, size_t h_len, const char *needle,
+                     size_t n_len);
+
+/*
+ * Case-insensitive substring search (ASCII only).
+ * Non-ASCII characters are compared byte-exact.
+ * Returns pointer to match, or NULL if not found.
+ */
+const char *gstrcasestr(const char *haystack, size_t h_len, const char *needle,
+                        size_t n_len);
+
+/*
+ * Counts non-overlapping occurrences of needle in string.
+ * Returns 0 if needle is empty or not found.
+ */
+size_t gstrcount(const char *s, size_t len, const char *needle, size_t n_len);
+
+/* ============================================================================
+ * Tokenization Functions
+ * ============================================================================
+ */
+
+/*
+ * Stateless tokenization (strsep-style).
+ * Updates *stringp and *lenp to point past the token and delimiter.
+ * Returns pointer to token start, or NULL if no more tokens.
+ * Stores token length in *tok_len if not NULL.
+ */
+const char *gstrsep(const char **stringp, size_t *lenp, const char *delim,
+                    size_t d_len, size_t *tok_len);
+
+/* ============================================================================
+ * Trimming Functions
+ * ============================================================================
+ */
+
+/*
+ * Trims leading ASCII whitespace (space, tab, newline, CR, VT, FF).
+ * Returns bytes written (excluding null terminator).
+ * Always null-terminates if dst_size > 0.
+ */
+size_t gstrltrim(char *dst, size_t dst_size, const char *src, size_t src_len);
+
+/*
+ * Trims trailing ASCII whitespace (space, tab, newline, CR, VT, FF).
+ * Returns bytes written (excluding null terminator).
+ * Always null-terminates if dst_size > 0.
+ */
+size_t gstrrtrim(char *dst, size_t dst_size, const char *src, size_t src_len);
+
+/*
+ * Trims both leading and trailing ASCII whitespace.
+ * Returns bytes written (excluding null terminator).
+ * Always null-terminates if dst_size > 0.
+ */
+size_t gstrtrim(char *dst, size_t dst_size, const char *src, size_t src_len);
+
+/* ============================================================================
+ * Transformation Functions
+ * ============================================================================
+ */
+
+/*
+ * Reverses string by graphemes.
+ * Returns bytes written (excluding null terminator).
+ * Always null-terminates if dst_size > 0.
+ */
+size_t gstrrev(char *dst, size_t dst_size, const char *src, size_t src_len);
+
+/*
+ * Replaces all occurrences of old with new.
+ * Returns bytes written (excluding null terminator).
+ * Always null-terminates if dst_size > 0.
+ * Truncates at complete grapheme boundary if buffer is too small.
+ */
+size_t gstrreplace(char *dst, size_t dst_size, const char *src, size_t src_len,
+                   const char *old, size_t old_len, const char *new_str,
+                   size_t new_len);
+
 #ifdef __cplusplus
 }
 #endif

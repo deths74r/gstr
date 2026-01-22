@@ -4,6 +4,7 @@
 
 #include <assert.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #ifdef GSTR_SINGLE_HEADER
@@ -583,6 +584,492 @@ TEST(single_grapheme_strings) {
 }
 
 /* ============================================================================
+ * gstrncasecmp Tests
+ * ============================================================================
+ */
+
+TEST(gstrncasecmp_basic) {
+  ASSERT_EQ(gstrncasecmp("Hello", 5, "HELLO", 5, 3), 0);
+  ASSERT_EQ(gstrncasecmp("Hello", 5, "Help", 4, 3), 0);
+  ASSERT(gstrncasecmp("Hello", 5, "Help", 4, 4) < 0);
+}
+
+TEST(gstrncasecmp_zero_n) { ASSERT_EQ(gstrncasecmp("abc", 3, "xyz", 3, 0), 0); }
+
+TEST(gstrncasecmp_null) {
+  ASSERT(gstrncasecmp(NULL, 0, "a", 1, 1) < 0);
+  ASSERT(gstrncasecmp("a", 1, NULL, 0, 1) > 0);
+  ASSERT_EQ(gstrncasecmp(NULL, 0, NULL, 0, 1), 0);
+}
+
+TEST(gstrncasecmp_emoji) {
+  /* Emoji should compare byte-exact */
+  ASSERT_EQ(gstrncasecmp(EMOJI_SIMPLE, EMOJI_SIMPLE_LEN, EMOJI_SIMPLE,
+                         EMOJI_SIMPLE_LEN, 1),
+            0);
+}
+
+/* ============================================================================
+ * gstrdup / gstrndup Tests
+ * ============================================================================
+ */
+
+TEST(gstrdup_basic) {
+  char *dup = gstrdup("hello", 5);
+  ASSERT_NOT_NULL(dup);
+  ASSERT_STR_EQ(dup, "hello");
+  free(dup);
+}
+
+TEST(gstrdup_null) {
+  char *dup = gstrdup(NULL, 5);
+  ASSERT_NULL(dup);
+}
+
+TEST(gstrdup_emoji) {
+  char *dup = gstrdup(FAMILY, FAMILY_LEN);
+  ASSERT_NOT_NULL(dup);
+  ASSERT(memcmp(dup, FAMILY, FAMILY_LEN) == 0);
+  ASSERT(dup[FAMILY_LEN] == '\0');
+  free(dup);
+}
+
+TEST(gstrndup_basic) {
+  char *dup = gstrndup("hello", 5, 3);
+  ASSERT_NOT_NULL(dup);
+  ASSERT_STR_EQ(dup, "hel");
+  free(dup);
+}
+
+TEST(gstrndup_null) {
+  char *dup = gstrndup(NULL, 5, 3);
+  ASSERT_NULL(dup);
+}
+
+TEST(gstrndup_zero_n) {
+  char *dup = gstrndup("hello", 5, 0);
+  ASSERT_NOT_NULL(dup);
+  ASSERT_STR_EQ(dup, "");
+  free(dup);
+}
+
+TEST(gstrndup_emoji) {
+  /* Copy first 3 graphemes of "Hi 👋🏽!" */
+  char *dup = gstrndup(MIXED, MIXED_LEN, 4);
+  ASSERT_NOT_NULL(dup);
+  ASSERT_EQ_SIZE(strlen(dup), 11); /* "Hi " + 8 byte emoji */
+  free(dup);
+}
+
+TEST(gstrndup_more_than_available) {
+  char *dup = gstrndup("hi", 2, 10);
+  ASSERT_NOT_NULL(dup);
+  ASSERT_STR_EQ(dup, "hi");
+  free(dup);
+}
+
+/* ============================================================================
+ * gstrrstr Tests
+ * ============================================================================
+ */
+
+TEST(gstrrstr_basic) {
+  const char *p = gstrrstr("hello hello", 11, "hello", 5);
+  ASSERT_NOT_NULL(p);
+  ASSERT_EQ_SIZE((size_t)(p - "hello hello"), 6); /* second occurrence */
+}
+
+TEST(gstrrstr_single_match) {
+  const char *p = gstrrstr("hello world", 11, "world", 5);
+  ASSERT_NOT_NULL(p);
+  ASSERT_EQ_SIZE((size_t)(p - "hello world"), 6);
+}
+
+TEST(gstrrstr_not_found) {
+  const char *p = gstrrstr("hello", 5, "xyz", 3);
+  ASSERT_NULL(p);
+}
+
+TEST(gstrrstr_empty_needle) {
+  const char *haystack = "hello";
+  const char *p = gstrrstr(haystack, 5, "", 0);
+  ASSERT_NOT_NULL(p);
+  ASSERT(p == haystack + 5); /* Points to end */
+}
+
+TEST(gstrrstr_emoji) {
+  /* Should NOT find partial emoji in ZWJ sequence */
+  const char *p = gstrrstr(FAMILY, FAMILY_LEN, WOMAN, WOMAN_LEN);
+  ASSERT_NULL(p);
+}
+
+/* ============================================================================
+ * gstrcasestr Tests
+ * ============================================================================
+ */
+
+TEST(gstrcasestr_basic) {
+  const char *p = gstrcasestr("Hello World", 11, "WORLD", 5);
+  ASSERT_NOT_NULL(p);
+  ASSERT_EQ_SIZE((size_t)(p - "Hello World"), 6);
+}
+
+TEST(gstrcasestr_not_found) {
+  const char *p = gstrcasestr("hello", 5, "XYZ", 3);
+  ASSERT_NULL(p);
+}
+
+TEST(gstrcasestr_empty_needle) {
+  const char *haystack = "hello";
+  const char *p = gstrcasestr(haystack, 5, "", 0);
+  ASSERT_NOT_NULL(p);
+  ASSERT(p == haystack);
+}
+
+TEST(gstrcasestr_mixed_case) {
+  const char *p = gstrcasestr("HeLLo WoRLd", 11, "hello", 5);
+  ASSERT_NOT_NULL(p);
+  ASSERT_EQ_SIZE((size_t)(p - "HeLLo WoRLd"), 0);
+}
+
+/* ============================================================================
+ * gstrcount Tests
+ * ============================================================================
+ */
+
+TEST(gstrcount_basic) {
+  ASSERT_EQ_SIZE(gstrcount("abcabcabc", 9, "abc", 3), 3);
+}
+
+TEST(gstrcount_single) { ASSERT_EQ_SIZE(gstrcount("hello", 5, "ell", 3), 1); }
+
+TEST(gstrcount_not_found) {
+  ASSERT_EQ_SIZE(gstrcount("hello", 5, "xyz", 3), 0);
+}
+
+TEST(gstrcount_empty_needle) {
+  ASSERT_EQ_SIZE(gstrcount("hello", 5, "", 0), 0);
+}
+
+TEST(gstrcount_overlapping) {
+  /* Non-overlapping: "aaa" in "aaaa" should be 1 (not 2) */
+  ASSERT_EQ_SIZE(gstrcount("aaaa", 4, "aaa", 3), 1);
+}
+
+TEST(gstrcount_emoji) {
+  /* Count emoji in mixed string */
+  char s[32];
+  memcpy(s, WAVE_SKIN, WAVE_SKIN_LEN);
+  memcpy(s + WAVE_SKIN_LEN, "X", 1);
+  memcpy(s + WAVE_SKIN_LEN + 1, WAVE_SKIN, WAVE_SKIN_LEN);
+  s[WAVE_SKIN_LEN * 2 + 1] = '\0';
+  ASSERT_EQ_SIZE(gstrcount(s, WAVE_SKIN_LEN * 2 + 1, WAVE_SKIN, WAVE_SKIN_LEN),
+                 2);
+}
+
+/* ============================================================================
+ * gstrsep Tests
+ * ============================================================================
+ */
+
+TEST(gstrsep_basic) {
+  const char *s = "a,b,c";
+  size_t len = 5;
+  size_t tok_len;
+
+  const char *tok = gstrsep(&s, &len, ",", 1, &tok_len);
+  ASSERT_NOT_NULL(tok);
+  ASSERT_EQ_SIZE(tok_len, 1);
+  ASSERT(*tok == 'a');
+
+  tok = gstrsep(&s, &len, ",", 1, &tok_len);
+  ASSERT_NOT_NULL(tok);
+  ASSERT_EQ_SIZE(tok_len, 1);
+  ASSERT(*tok == 'b');
+
+  tok = gstrsep(&s, &len, ",", 1, &tok_len);
+  ASSERT_NOT_NULL(tok);
+  ASSERT_EQ_SIZE(tok_len, 1);
+  ASSERT(*tok == 'c');
+
+  tok = gstrsep(&s, &len, ",", 1, &tok_len);
+  ASSERT_NULL(tok);
+}
+
+TEST(gstrsep_empty_token) {
+  const char *s = "a,,b";
+  size_t len = 4;
+  size_t tok_len;
+
+  const char *tok = gstrsep(&s, &len, ",", 1, &tok_len);
+  ASSERT_NOT_NULL(tok);
+  ASSERT_EQ_SIZE(tok_len, 1);
+
+  tok = gstrsep(&s, &len, ",", 1, &tok_len);
+  ASSERT_NOT_NULL(tok);
+  ASSERT_EQ_SIZE(tok_len, 0); /* Empty token */
+
+  tok = gstrsep(&s, &len, ",", 1, &tok_len);
+  ASSERT_NOT_NULL(tok);
+  ASSERT_EQ_SIZE(tok_len, 1);
+}
+
+TEST(gstrsep_no_delimiter) {
+  const char *s = "hello";
+  size_t len = 5;
+  size_t tok_len;
+
+  const char *tok = gstrsep(&s, &len, ",", 1, &tok_len);
+  ASSERT_NOT_NULL(tok);
+  ASSERT_EQ_SIZE(tok_len, 5);
+  ASSERT_NULL(s);
+}
+
+TEST(gstrsep_multi_delimiter) {
+  const char *s = "a;b,c";
+  size_t len = 5;
+  size_t tok_len;
+
+  const char *tok = gstrsep(&s, &len, ",;", 2, &tok_len);
+  ASSERT_NOT_NULL(tok);
+  ASSERT_EQ_SIZE(tok_len, 1);
+  ASSERT(*tok == 'a');
+}
+
+/* ============================================================================
+ * gstrltrim / gstrrtrim / gstrtrim Tests
+ * ============================================================================
+ */
+
+TEST(gstrltrim_basic) {
+  char buf[32];
+  size_t n = gstrltrim(buf, sizeof(buf), "  hello", 7);
+  ASSERT_EQ_SIZE(n, 5);
+  ASSERT_STR_EQ(buf, "hello");
+}
+
+TEST(gstrltrim_tabs) {
+  char buf[32];
+  size_t n = gstrltrim(buf, sizeof(buf), "\t\thello", 7);
+  ASSERT_EQ_SIZE(n, 5);
+  ASSERT_STR_EQ(buf, "hello");
+}
+
+TEST(gstrltrim_all_whitespace) {
+  char buf[32];
+  size_t n = gstrltrim(buf, sizeof(buf), "   \t\n", 5);
+  ASSERT_EQ_SIZE(n, 0);
+  ASSERT_STR_EQ(buf, "");
+}
+
+TEST(gstrltrim_no_whitespace) {
+  char buf[32];
+  size_t n = gstrltrim(buf, sizeof(buf), "hello", 5);
+  ASSERT_EQ_SIZE(n, 5);
+  ASSERT_STR_EQ(buf, "hello");
+}
+
+TEST(gstrltrim_emoji) {
+  char buf[32];
+  /* Space + emoji */
+  char src[16];
+  src[0] = ' ';
+  memcpy(src + 1, EMOJI_SIMPLE, EMOJI_SIMPLE_LEN);
+  size_t n = gstrltrim(buf, sizeof(buf), src, 1 + EMOJI_SIMPLE_LEN);
+  ASSERT_EQ_SIZE(n, EMOJI_SIMPLE_LEN);
+  ASSERT(memcmp(buf, EMOJI_SIMPLE, EMOJI_SIMPLE_LEN) == 0);
+}
+
+TEST(gstrrtrim_basic) {
+  char buf[32];
+  size_t n = gstrrtrim(buf, sizeof(buf), "hello  ", 7);
+  ASSERT_EQ_SIZE(n, 5);
+  ASSERT_STR_EQ(buf, "hello");
+}
+
+TEST(gstrrtrim_mixed_whitespace) {
+  char buf[32];
+  size_t n = gstrrtrim(buf, sizeof(buf), "hello \t\n", 8);
+  ASSERT_EQ_SIZE(n, 5);
+  ASSERT_STR_EQ(buf, "hello");
+}
+
+TEST(gstrrtrim_no_whitespace) {
+  char buf[32];
+  size_t n = gstrrtrim(buf, sizeof(buf), "hello", 5);
+  ASSERT_EQ_SIZE(n, 5);
+  ASSERT_STR_EQ(buf, "hello");
+}
+
+TEST(gstrtrim_basic) {
+  char buf[32];
+  size_t n = gstrtrim(buf, sizeof(buf), "  hello  ", 9);
+  ASSERT_EQ_SIZE(n, 5);
+  ASSERT_STR_EQ(buf, "hello");
+}
+
+TEST(gstrtrim_tabs_and_newlines) {
+  char buf[32];
+  size_t n = gstrtrim(buf, sizeof(buf), "\t\nhello\r\n", 9);
+  ASSERT_EQ_SIZE(n, 5);
+  ASSERT_STR_EQ(buf, "hello");
+}
+
+TEST(gstrtrim_only_whitespace) {
+  char buf[32];
+  size_t n = gstrtrim(buf, sizeof(buf), "   \t\n  ", 7);
+  ASSERT_EQ_SIZE(n, 0);
+  ASSERT_STR_EQ(buf, "");
+}
+
+TEST(gstrtrim_emoji) {
+  char buf[32];
+  /* Space + emoji + space */
+  char src[16];
+  src[0] = ' ';
+  memcpy(src + 1, EMOJI_SIMPLE, EMOJI_SIMPLE_LEN);
+  src[1 + EMOJI_SIMPLE_LEN] = ' ';
+  size_t n = gstrtrim(buf, sizeof(buf), src, 2 + EMOJI_SIMPLE_LEN);
+  ASSERT_EQ_SIZE(n, EMOJI_SIMPLE_LEN);
+  ASSERT(memcmp(buf, EMOJI_SIMPLE, EMOJI_SIMPLE_LEN) == 0);
+}
+
+/* ============================================================================
+ * gstrrev Tests
+ * ============================================================================
+ */
+
+TEST(gstrrev_ascii) {
+  char buf[32];
+  size_t n = gstrrev(buf, sizeof(buf), "hello", 5);
+  ASSERT_EQ_SIZE(n, 5);
+  ASSERT_STR_EQ(buf, "olleh");
+}
+
+TEST(gstrrev_single_char) {
+  char buf[32];
+  size_t n = gstrrev(buf, sizeof(buf), "a", 1);
+  ASSERT_EQ_SIZE(n, 1);
+  ASSERT_STR_EQ(buf, "a");
+}
+
+TEST(gstrrev_empty) {
+  char buf[32];
+  size_t n = gstrrev(buf, sizeof(buf), "", 0);
+  ASSERT_EQ_SIZE(n, 0);
+  ASSERT_STR_EQ(buf, "");
+}
+
+TEST(gstrrev_emoji) {
+  char buf[32];
+  /* Reverse "A👋🏽B" */
+  char src[16];
+  src[0] = 'A';
+  memcpy(src + 1, WAVE_SKIN, WAVE_SKIN_LEN);
+  src[1 + WAVE_SKIN_LEN] = 'B';
+  size_t src_len = 2 + WAVE_SKIN_LEN;
+
+  size_t n = gstrrev(buf, sizeof(buf), src, src_len);
+  ASSERT_EQ_SIZE(n, src_len);
+  /* Should be "B👋🏽A" */
+  ASSERT(buf[0] == 'B');
+  ASSERT(memcmp(buf + 1, WAVE_SKIN, WAVE_SKIN_LEN) == 0);
+  ASSERT(buf[1 + WAVE_SKIN_LEN] == 'A');
+}
+
+TEST(gstrrev_family) {
+  char buf[32];
+  /* Reversing a single grapheme should return the same */
+  size_t n = gstrrev(buf, sizeof(buf), FAMILY, FAMILY_LEN);
+  ASSERT_EQ_SIZE(n, FAMILY_LEN);
+  ASSERT(memcmp(buf, FAMILY, FAMILY_LEN) == 0);
+}
+
+TEST(gstrrev_buffer_overflow) {
+  char buf[4];
+  size_t n = gstrrev(buf, sizeof(buf), "hello", 5);
+  /* Can fit 3 chars + null */
+  ASSERT_EQ_SIZE(n, 3);
+  ASSERT_STR_EQ(buf, "oll"); /* Last 3 chars reversed */
+}
+
+/* ============================================================================
+ * gstrreplace Tests
+ * ============================================================================
+ */
+
+TEST(gstrreplace_basic) {
+  char buf[32];
+  size_t n =
+      gstrreplace(buf, sizeof(buf), "hello world", 11, "world", 5, "there", 5);
+  ASSERT_EQ_SIZE(n, 11);
+  ASSERT_STR_EQ(buf, "hello there");
+}
+
+TEST(gstrreplace_multiple) {
+  char buf[32];
+  size_t n = gstrreplace(buf, sizeof(buf), "aXaXa", 5, "X", 1, "Y", 1);
+  ASSERT_EQ_SIZE(n, 5);
+  ASSERT_STR_EQ(buf, "aYaYa");
+}
+
+TEST(gstrreplace_grow) {
+  char buf[32];
+  size_t n = gstrreplace(buf, sizeof(buf), "a-b-c", 5, "-", 1, "---", 3);
+  ASSERT_EQ_SIZE(n, 9);
+  ASSERT_STR_EQ(buf, "a---b---c");
+}
+
+TEST(gstrreplace_shrink) {
+  char buf[32];
+  size_t n = gstrreplace(buf, sizeof(buf), "aXXXb", 5, "XXX", 3, "Y", 1);
+  ASSERT_EQ_SIZE(n, 3);
+  ASSERT_STR_EQ(buf, "aYb");
+}
+
+TEST(gstrreplace_delete) {
+  char buf[32];
+  size_t n = gstrreplace(buf, sizeof(buf), "a-b-c", 5, "-", 1, "", 0);
+  ASSERT_EQ_SIZE(n, 3);
+  ASSERT_STR_EQ(buf, "abc");
+}
+
+TEST(gstrreplace_no_match) {
+  char buf[32];
+  size_t n = gstrreplace(buf, sizeof(buf), "hello", 5, "xyz", 3, "abc", 3);
+  ASSERT_EQ_SIZE(n, 5);
+  ASSERT_STR_EQ(buf, "hello");
+}
+
+TEST(gstrreplace_empty_old) {
+  char buf[32];
+  size_t n = gstrreplace(buf, sizeof(buf), "hello", 5, "", 0, "X", 1);
+  ASSERT_EQ_SIZE(n, 5);
+  ASSERT_STR_EQ(buf, "hello"); /* No replacement for empty pattern */
+}
+
+TEST(gstrreplace_emoji) {
+  char buf[64];
+  /* Replace emoji with text */
+  char src[16];
+  src[0] = 'H';
+  src[1] = 'i';
+  memcpy(src + 2, EMOJI_SIMPLE, EMOJI_SIMPLE_LEN);
+  size_t n = gstrreplace(buf, sizeof(buf), src, 2 + EMOJI_SIMPLE_LEN,
+                         EMOJI_SIMPLE, EMOJI_SIMPLE_LEN, ":)", 2);
+  ASSERT_EQ_SIZE(n, 4);
+  ASSERT_STR_EQ(buf, "Hi:)");
+}
+
+TEST(gstrreplace_buffer_overflow) {
+  char buf[8];
+  size_t n = gstrreplace(buf, sizeof(buf), "aXb", 3, "X", 1, "YYYY", 4);
+  /* "aYYYYb" is 6 bytes, fits in 8 with null */
+  ASSERT_EQ_SIZE(n, 6);
+  ASSERT_STR_EQ(buf, "aYYYYb");
+}
+
+/* ============================================================================
  * Main
  * ============================================================================
  */
@@ -679,6 +1166,82 @@ int main(void) {
   RUN(null_inputs);
   RUN(empty_strings);
   RUN(single_grapheme_strings);
+
+  printf("\ngstrncasecmp Tests:\n");
+  RUN(gstrncasecmp_basic);
+  RUN(gstrncasecmp_zero_n);
+  RUN(gstrncasecmp_null);
+  RUN(gstrncasecmp_emoji);
+
+  printf("\ngstrdup/gstrndup Tests:\n");
+  RUN(gstrdup_basic);
+  RUN(gstrdup_null);
+  RUN(gstrdup_emoji);
+  RUN(gstrndup_basic);
+  RUN(gstrndup_null);
+  RUN(gstrndup_zero_n);
+  RUN(gstrndup_emoji);
+  RUN(gstrndup_more_than_available);
+
+  printf("\ngstrrstr Tests:\n");
+  RUN(gstrrstr_basic);
+  RUN(gstrrstr_single_match);
+  RUN(gstrrstr_not_found);
+  RUN(gstrrstr_empty_needle);
+  RUN(gstrrstr_emoji);
+
+  printf("\ngstrcasestr Tests:\n");
+  RUN(gstrcasestr_basic);
+  RUN(gstrcasestr_not_found);
+  RUN(gstrcasestr_empty_needle);
+  RUN(gstrcasestr_mixed_case);
+
+  printf("\ngstrcount Tests:\n");
+  RUN(gstrcount_basic);
+  RUN(gstrcount_single);
+  RUN(gstrcount_not_found);
+  RUN(gstrcount_empty_needle);
+  RUN(gstrcount_overlapping);
+  RUN(gstrcount_emoji);
+
+  printf("\ngstrsep Tests:\n");
+  RUN(gstrsep_basic);
+  RUN(gstrsep_empty_token);
+  RUN(gstrsep_no_delimiter);
+  RUN(gstrsep_multi_delimiter);
+
+  printf("\nTrim Tests:\n");
+  RUN(gstrltrim_basic);
+  RUN(gstrltrim_tabs);
+  RUN(gstrltrim_all_whitespace);
+  RUN(gstrltrim_no_whitespace);
+  RUN(gstrltrim_emoji);
+  RUN(gstrrtrim_basic);
+  RUN(gstrrtrim_mixed_whitespace);
+  RUN(gstrrtrim_no_whitespace);
+  RUN(gstrtrim_basic);
+  RUN(gstrtrim_tabs_and_newlines);
+  RUN(gstrtrim_only_whitespace);
+  RUN(gstrtrim_emoji);
+
+  printf("\ngstrrev Tests:\n");
+  RUN(gstrrev_ascii);
+  RUN(gstrrev_single_char);
+  RUN(gstrrev_empty);
+  RUN(gstrrev_emoji);
+  RUN(gstrrev_family);
+  RUN(gstrrev_buffer_overflow);
+
+  printf("\ngstrreplace Tests:\n");
+  RUN(gstrreplace_basic);
+  RUN(gstrreplace_multiple);
+  RUN(gstrreplace_grow);
+  RUN(gstrreplace_shrink);
+  RUN(gstrreplace_delete);
+  RUN(gstrreplace_no_match);
+  RUN(gstrreplace_empty_old);
+  RUN(gstrreplace_emoji);
+  RUN(gstrreplace_buffer_overflow);
 
   printf("\n----------------------------------------\n");
   printf("Tests passed: %d\n", tests_passed);
