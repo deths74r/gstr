@@ -1,533 +1,1065 @@
-# utflite
+# gstr.h
 
-A lightweight, zero-dependency UTF-8 library for C. See [UTF-8 Everywhere](https://utf8everywhere.org/) for why UTF-8 is the recommended encoding for all text.
+A single-header UTF-8 and grapheme string library for C. No dependencies, just drop it in and go.
 
-## Development Branch: gstr.h
+## What Problem Does This Solve?
 
-> **The `gstr-dev` branch contains gstr.h** - a grapheme-first equivalent to string.h. Where string.h operates on bytes, gstr.h operates on grapheme clusters.
+Standard C string functions like `strlen()` and `strchr()` work on **bytes**, not **characters**. This causes problems with Unicode text:
 
 ```c
-// string.h (bytes)
-strlen("👨‍👩‍👧")  → 18
+#include <string.h>
 
-// gstr.h (graphemes)
-gstrlen("👨‍👩‍👧", 18) → 1
+strlen("Hello");      // Returns 5 ✓ (5 letters, 5 bytes)
+strlen("你好");        // Returns 6 ✗ (2 characters, but 6 bytes!)
+strlen("👨‍👩‍👧");         // Returns 18 ✗ (1 emoji, but 18 bytes!)
 ```
 
-### What's in gstr-dev?
+**gstr.h** fixes this by operating on **grapheme clusters** - what users actually perceive as "characters":
 
-**18 grapheme-aware string functions:**
+```c
+#include "gstr.h"
 
-| Category | Functions |
-|----------|-----------|
-| Length | `gstrlen`, `gstrnlen` |
-| Indexing | `gstroff`, `gstrat` |
-| Comparison | `gstrcmp`, `gstrncmp`, `gstrcasecmp` |
-| Search | `gstrchr`, `gstrrchr`, `gstrstr` |
-| Span | `gstrspn`, `gstrcspn`, `gstrpbrk` |
-| Extraction | `gstrsub` |
-| Copy | `gstrcpy`, `gstrncpy` |
-| Concatenation | `gstrcat`, `gstrncat` |
+gstrlen("Hello", 5);      // Returns 5 ✓
+gstrlen("你好", 6);        // Returns 2 ✓
+gstrlen("👨‍👩‍👧", 18);        // Returns 1 ✓
+```
 
-### Design Decisions
+## Quick Start
 
-- **Unit of operation**: Grapheme cluster (UAX #29)
-- **Equality**: Byte-exact (`é` precomposed ≠ `é` decomposed)
-- **Search**: Complete graphemes only (won't find 👩 inside 👨‍👩‍👧)
+### Installation (Single Header)
 
-### Try It
+1. Copy `single_include/gstr.h` to your project
+2. In **one** .c file, define the implementation:
 
-```bash
-git checkout gstr-dev
-make test-gstr        # Run 70 grapheme string tests
-make test-gstr-single # Test single-header version
+```c
+#define GSTR_IMPLEMENTATION
+#include "gstr.h"
+```
+
+3. In all other files, just include normally:
+
+```c
+#include "gstr.h"
+```
+
+### Your First Program
+
+```c
+#define GSTR_IMPLEMENTATION
+#include "gstr.h"
+#include <stdio.h>
+
+int main(void) {
+    const char *text = "Hello 世界! 👋";
+    size_t len = 14;  // byte length
+    
+    printf("Bytes: %zu\n", len);                    // 14
+    printf("Graphemes: %zu\n", gstrlen(text, len)); // 10
+    printf("Display width: %zu\n", gstrwidth(text, len)); // 12 columns
+    
+    return 0;
+}
+```
+
+Compile: `gcc -o hello hello.c`
+
+---
+
+## Understanding the Basics
+
+Before diving into the functions, let's understand three important concepts:
+
+### 1. Bytes vs Codepoints vs Graphemes
+
+| Term | What It Is | Example |
+|------|------------|---------|
+| **Byte** | A single 8-bit value (0-255) | The letter 'A' is 1 byte |
+| **Codepoint** | A Unicode number (U+0000 to U+10FFFF) | 'A' is U+0041, '中' is U+4E2D |
+| **Grapheme** | What users see as "one character" | 👨‍👩‍👧 is 1 grapheme (but 7 codepoints!) |
+
+UTF-8 encodes codepoints using 1-4 bytes:
+- ASCII (U+0000-U+007F): 1 byte
+- Latin, Greek, etc. (U+0080-U+07FF): 2 bytes  
+- Most languages (U+0800-U+FFFF): 3 bytes
+- Emoji, rare scripts (U+10000+): 4 bytes
+
+### 2. Why Graphemes Matter
+
+A grapheme cluster is what users perceive as a single character. Some examples:
+
+| What You See | Codepoints | Bytes |
+|--------------|------------|-------|
+| é | 1 (U+00E9) or 2 (e + ´) | 2 or 3 |
+| 🇨🇦 | 2 (🇨 + 🇦) | 8 |
+| 👨‍👩‍👧 | 7 (👨 + ZWJ + 👩 + ZWJ + 👧) | 18 |
+| 한 | 1 (precomposed) or 3 (ㅎ + ㅏ + ㄴ) | 3 or 9 |
+
+**gstr.h** handles all of these correctly.
+
+### 3. The Two Layers
+
+**gstr.h** has two layers of functions:
+
+| Prefix | Level | Purpose |
+|--------|-------|---------|
+| `utf8_*` | Low-level | Encoding, decoding, validation, byte navigation |
+| `gstr*` | High-level | String operations on graphemes (like string.h) |
+
+Most of the time, you'll use the `gstr*` functions.
+
+---
+
+## Tutorial: Working with Strings
+
+### Counting Characters
+
+**Problem:** How many characters are in my string?
+
+```c
+#include "gstr.h"
+#include <string.h>
+
+const char *text = "café ☕";
+size_t bytes = strlen(text);  // 9 bytes
+
+// Count graphemes (what users see)
+size_t chars = gstrlen(text, bytes);
+printf("Characters: %zu\n", chars);  // 6: c, a, f, é, space, ☕
+```
+
+**Limit the count:**
+
+```c
+// Count at most 3 graphemes
+size_t n = gstrnlen(text, bytes, 3);
+printf("First 3: %zu\n", n);  // 3
+```
+
+### Getting Display Width
+
+**Problem:** How many terminal columns does my string take?
+
+```c
+const char *text = "Hello世界";
+size_t bytes = strlen(text);
+
+size_t width = gstrwidth(text, bytes);
+printf("Width: %zu columns\n", width);  // 9 (5 + 2 + 2)
+// ASCII = 1 column each, Chinese = 2 columns each
+```
+
+### Accessing Individual Characters
+
+**Problem:** Get the 3rd character of a string.
+
+```c
+const char *text = "Hello 👋 World";
+size_t bytes = strlen(text);
+
+// Get pointer to 3rd grapheme (0-indexed, so index 2)
+size_t char_len;
+const char *third = gstrat(text, bytes, 2, &char_len);
+
+printf("Third character: %.*s\n", (int)char_len, third);  // "l"
+```
+
+**Get byte offset instead:**
+
+```c
+size_t offset = gstroff(text, bytes, 6);  // Byte offset of grapheme 6
+printf("Offset of char 6: %zu\n", offset);  // Points to 👋
+```
+
+### Comparing Strings
+
+**Problem:** Are these two strings equal?
+
+```c
+const char *a = "hello";
+const char *b = "hello";
+const char *c = "world";
+
+if (gstrcmp(a, 5, b, 5) == 0) {
+    printf("a and b are equal\n");  // This prints
+}
+
+if (gstrcmp(a, 5, c, 5) < 0) {
+    printf("a comes before c\n");   // This prints (h < w)
+}
+```
+
+**Compare only first N graphemes:**
+
+```c
+const char *a = "hello world";
+const char *b = "hello there";
+
+if (gstrncmp(a, 11, b, 11, 5) == 0) {
+    printf("First 5 chars match\n");  // This prints
+}
+```
+
+**Case-insensitive comparison:**
+
+```c
+const char *a = "Hello";
+const char *b = "HELLO";
+
+if (gstrcasecmp(a, 5, b, 5) == 0) {
+    printf("Equal ignoring case\n");  // This prints
+}
+```
+
+### Searching in Strings
+
+**Problem:** Find a substring in my string.
+
+```c
+const char *text = "The quick brown fox";
+size_t len = strlen(text);
+
+// Find "quick"
+const char *found = gstrstr(text, len, "quick", 5);
+if (found) {
+    printf("Found at position: %ld\n", found - text);  // 4
+}
+
+// Case-insensitive search
+const char *found2 = gstrcasestr(text, len, "QUICK", 5);
+if (found2) {
+    printf("Found (ignoring case)\n");
+}
+```
+
+**Find a single character:**
+
+```c
+const char *text = "hello";
+size_t len = 5;
+
+// Find first 'l'
+const char *first_l = gstrchr(text, len, "l", 1);
+printf("First 'l' at: %ld\n", first_l - text);  // 2
+
+// Find last 'l'
+const char *last_l = gstrrchr(text, len, "l", 1);
+printf("Last 'l' at: %ld\n", last_l - text);   // 3
+```
+
+**Count occurrences:**
+
+```c
+const char *text = "banana";
+size_t count = gstrcount(text, 6, "a", 1);
+printf("'a' appears %zu times\n", count);  // 3
+```
+
+### Checking Prefix and Suffix
+
+**Problem:** Does my filename end with ".txt"?
+
+```c
+const char *filename = "document.txt";
+size_t len = strlen(filename);
+
+if (gstrendswith(filename, len, ".txt", 4)) {
+    printf("It's a text file!\n");
+}
+
+if (gstrstartswith(filename, len, "doc", 3)) {
+    printf("Starts with 'doc'\n");
+}
+```
+
+### Copying Strings
+
+**Problem:** Copy a string to a buffer safely.
+
+```c
+char buffer[32];
+const char *source = "Hello 世界!";
+size_t src_len = strlen(source);
+
+// Copy entire string
+size_t copied = gstrcpy(buffer, sizeof(buffer), source, src_len);
+printf("Copied %zu bytes: %s\n", copied, buffer);
+
+// Copy only first 5 graphemes
+size_t copied2 = gstrncpy(buffer, sizeof(buffer), source, src_len, 5);
+printf("First 5 chars: %s\n", buffer);  // "Hello"
+```
+
+### Extracting Substrings
+
+**Problem:** Get characters 2-5 from a string.
+
+```c
+char buffer[32];
+const char *text = "Hello World";
+size_t len = strlen(text);
+
+// Extract 4 graphemes starting at position 2
+size_t extracted = gstrsub(buffer, sizeof(buffer), text, len, 2, 4);
+printf("Extracted: %s\n", buffer);  // "llo "
+```
+
+### Concatenating Strings
+
+**Problem:** Append one string to another.
+
+```c
+char buffer[32] = "Hello";
+const char *suffix = " World!";
+
+// Append entire suffix
+gstrcat(buffer, sizeof(buffer), suffix, strlen(suffix));
+printf("%s\n", buffer);  // "Hello World!"
+
+// Or append only N graphemes
+char buf2[32] = "Hi";
+gstrncat(buf2, sizeof(buf2), " there friend", 13, 6);
+printf("%s\n", buf2);  // "Hi there"
+```
+
+### Trimming Whitespace
+
+**Problem:** Remove leading/trailing spaces.
+
+```c
+char buffer[32];
+const char *text = "   hello world   ";
+size_t len = strlen(text);
+
+// Trim leading whitespace
+gstrltrim(buffer, sizeof(buffer), text, len);
+printf("[%s]\n", buffer);  // "[hello world   ]"
+
+// Trim trailing whitespace  
+gstrrtrim(buffer, sizeof(buffer), text, len);
+printf("[%s]\n", buffer);  // "[   hello world]"
+
+// Trim both
+gstrtrim(buffer, sizeof(buffer), text, len);
+printf("[%s]\n", buffer);  // "[hello world]"
+```
+
+### Changing Case
+
+**Problem:** Convert to lowercase or uppercase.
+
+```c
+char buffer[32];
+
+gstrlower(buffer, sizeof(buffer), "Hello WORLD", 11);
+printf("%s\n", buffer);  // "hello world"
+
+gstrupper(buffer, sizeof(buffer), "Hello World", 11);
+printf("%s\n", buffer);  // "HELLO WORLD"
+```
+
+Note: These only convert ASCII letters (a-z, A-Z).
+
+### Reversing Strings
+
+**Problem:** Reverse the characters in a string.
+
+```c
+char buffer[32];
+
+gstrrev(buffer, sizeof(buffer), "Hello", 5);
+printf("%s\n", buffer);  // "olleH"
+
+// Works with emoji too!
+gstrrev(buffer, sizeof(buffer), "Hi👋", 6);
+printf("%s\n", buffer);  // "👋iH"
+```
+
+### Replacing Text
+
+**Problem:** Replace all occurrences of a substring.
+
+```c
+char buffer[64];
+const char *text = "one two one three one";
+size_t len = strlen(text);
+
+gstrreplace(buffer, sizeof(buffer), text, len, "one", 3, "1", 1);
+printf("%s\n", buffer);  // "1 two 1 three 1"
+```
+
+### Truncating with Ellipsis
+
+**Problem:** Shorten text but show it was truncated.
+
+```c
+char buffer[32];
+
+gstrellipsis(buffer, sizeof(buffer), "Hello World", 11, 8, "...", 3);
+printf("%s\n", buffer);  // "Hello..."
+
+// Works with custom ellipsis
+gstrellipsis(buffer, sizeof(buffer), "Hello World", 11, 8, "…", 3);
+printf("%s\n", buffer);  // "Hello…"
+```
+
+### Padding Strings
+
+**Problem:** Pad a string to a fixed width.
+
+```c
+char buffer[32];
+
+// Right-pad (align left)
+gstrrpad(buffer, sizeof(buffer), "Hi", 2, 10, " ", 1);
+printf("[%s]\n", buffer);  // "[Hi        ]"
+
+// Left-pad (align right)
+gstrlpad(buffer, sizeof(buffer), "Hi", 2, 10, " ", 1);
+printf("[%s]\n", buffer);  // "[        Hi]"
+
+// Center
+gstrpad(buffer, sizeof(buffer), "Hi", 2, 10, " ", 1);
+printf("[%s]\n", buffer);  // "[    Hi    ]"
+```
+
+### Filling with Characters
+
+**Problem:** Create a string of repeated characters.
+
+```c
+char buffer[32];
+
+gstrfill(buffer, sizeof(buffer), "-", 1, 20);
+printf("%s\n", buffer);  // "--------------------"
+
+// Works with multi-byte characters
+gstrfill(buffer, sizeof(buffer), "→", 3, 5);
+printf("%s\n", buffer);  // "→→→→→"
+```
+
+### Duplicating Strings
+
+**Problem:** Create a copy of a string (malloc).
+
+```c
+const char *text = "Hello";
+
+// Duplicate entire string
+char *copy = gstrdup(text, 5);
+printf("%s\n", copy);
+free(copy);
+
+// Duplicate first N graphemes
+char *partial = gstrndup(text, 5, 3);
+printf("%s\n", partial);  // "Hel"
+free(partial);
+```
+
+### Tokenizing (Splitting)
+
+**Problem:** Split a string by delimiters.
+
+```c
+const char *text = "one,two,three";
+const char *ptr = text;
+size_t len = strlen(text);
+
+const char *token;
+size_t tok_len;
+
+while ((token = gstrsep(&ptr, &len, ",", 1, &tok_len)) != NULL) {
+    printf("Token: %.*s\n", (int)tok_len, token);
+}
+// Output:
+// Token: one
+// Token: two
+// Token: three
+```
+
+### Span Functions
+
+**Problem:** Count characters matching a set.
+
+```c
+const char *text = "123abc456";
+size_t len = strlen(text);
+
+// Count leading digits
+size_t digits = gstrspn(text, len, "0123456789", 10);
+printf("Leading digits: %zu\n", digits);  // 3
+
+// Count leading non-letters
+size_t non_alpha = gstrcspn(text, len, "abcdefghijklmnopqrstuvwxyz", 26);
+printf("Before first letter: %zu\n", non_alpha);  // 3
+
+// Find first vowel
+const char *vowel = gstrpbrk(text, len, "aeiou", 5);
+printf("First vowel: %c\n", *vowel);  // 'a'
 ```
 
 ---
 
-## News
-
-### v1.5.3 (January 2026)
-- **New**: `utflite_grapheme_count()` - count user-perceived characters directly
-- Improved test coverage: 17 new tests for char_width, grapheme_count, and truncate edge cases
-- Rewrote API documentation to natural language style
-### v1.5.2 (January 2026)
-- **Fix**: Skin tone modifiers (U+1F3FB-U+1F3FF) now correctly zero-width
-- **Fix**: Regional Indicators (U+1F1E6-U+1F1FF) now correctly double-width for flag emoji
-- **Fix**: Split double-width range to exclude skin tone modifiers
-- Enables correct cursor positioning for emoji like 👋🏻 and flags like 🇨🇦
-
-### v1.5.1 (December 2025)
-- **Breaking fix**: `utflite_decode()` now returns 0 (not 1) for empty/null input, preventing infinite loops
-- Added `UTFLITE_UNICODE_VERSION` macro (value: 170 for Unicode 17.0)
-
-### v1.5.0 (December 2025)
-- Added detailed documentation for `utflite__is_extended_pictographic()` explaining GB11 behavior
-- Added complexity documentation for `utflite_prev_grapheme()` (O(k) where k ≤ 128)
-- Documented that double-width table is used as Extended_Pictographic approximation for GB11
-
-### v1.4.0 (December 2025)
-- Code compliance with CODING_STANDARDS.md (removed typedefs, added named constants)
-- Increased grapheme backtrack limit to 128 codepoints (handles longest emoji sequences)
-- Internal improvements (no API changes)
-
-### v1.3.0 (December 2025)
-- **UAX #29 grapheme cluster segmentation** - proper cursor movement over emoji sequences, combining marks, Hangul, and Indic scripts
-- 100% pass rate on official Unicode GraphemeBreakTest.txt (766 tests)
-- Implements all GB rules including GB9c (Indic conjunct sequences)
-- Library size: ~18KB compiled (still tiny!)
-
-### v1.2.0 (December 2025)
-- Renamed `utflite_is_combining()` to `utflite_is_zero_width()` for accuracy
-- Fixed zero-width detection for BiDi control characters
-- Added bounded scan to `utflite_prev_char()` for safety
-
-### v1.1.0 (December 2025)
-- Initial public release
-- UTF-8 encoding/decoding with full validation
-- Unicode 17.0 character width tables
-
-## Features
-
-- UTF-8 encoding and decoding with full validation
-- Unicode 17.0 character width tables (wcwidth alternative)
-- **UAX #29 grapheme cluster segmentation** (emoji, flags, combining marks, Hangul)
-- String navigation (next/prev character and grapheme)
-- Utility functions: validate, count, width, truncate
-- Single-header option for easy integration
-- C17 compliant, no external dependencies
-
-## Use Cases
-
-**Terminal/CLI applications**
-- Text editors that need cursor positioning over Unicode text
-- Progress bars and status lines with proper column alignment
-- Tree views and tables that must align with CJK/emoji content
-
-**Text processing tools**
-- Validating UTF-8 input from files or network
-- Counting characters (not bytes) for length limits
-- Truncating strings to fit display widths without breaking characters
-
-**Embedded systems**
-- Lightweight alternative to ICU or libunistring
-- Single-header makes it easy to integrate into firmware
-- No heap allocation, no dependencies
-
-**Game development**
-- Chat systems handling international text
-- UI text measurement for layout
-- Input validation for player names
-
-**When NOT to use utflite**
-- Full Unicode normalization (NFC/NFD) - use ICU
-- Complex text shaping/rendering (Arabic, Indic scripts) - use HarfBuzz
-- Locale-aware sorting/comparison - use ICU
-- Bidirectional text layout - use FriBidi
-
-## Project Structure
-
-```
-utflite/
-├── include/utflite/      # Public headers
-│   └── utflite.h
-├── single_include/       # Single-header distribution
-│   └── utflite.h
-├── src/                  # Implementation
-│   └── utflite.c
-├── test/
-│   └── test_utflite.c
-└── build/                # Build artifacts (gitignored)
-```
-
-## Installation
-
-### Single Header (Easiest)
-
-Copy `single_include/utflite.h` to your project. In **one** .c file:
-
-```c
-#define UTFLITE_IMPLEMENTATION
-#include "utflite.h"
-```
-
-In all other files, just include normally:
-
-```c
-#include "utflite.h"
-```
-
-### Static Library
-
-```bash
-make
-make install  # installs to /usr/local
-```
-
-Then in your code:
-
-```c
-#include <utflite/utflite.h>
-```
-
-And compile with `-lutflite`.
-
-## Tutorial
+## Tutorial: Low-Level UTF-8 Operations
 
 ### Decoding UTF-8
 
-UTF-8 encodes Unicode codepoints as 1-4 bytes. Use `utflite_decode()` to convert bytes to a codepoint:
+**Problem:** Get the Unicode codepoint from UTF-8 bytes.
 
 ```c
-#define UTFLITE_IMPLEMENTATION
-#include "utflite.h"
-#include <stdio.h>
+uint32_t codepoint;
+int bytes_consumed;
 
-int main(void) {
-    const char *text = "A";           // ASCII: 1 byte
-    const char *text2 = "\xC3\xA9";   // e-acute (U+00E9): 2 bytes
-    const char *text3 = "\xE4\xB8\xAD"; // Chinese character (U+4E2D): 3 bytes
+// Decode ASCII
+bytes_consumed = utf8_decode("A", 1, &codepoint);
+printf("U+%04X (%d byte)\n", codepoint, bytes_consumed);  // U+0041 (1 byte)
 
-    uint32_t codepoint;
-    int bytes;
+// Decode Chinese character
+bytes_consumed = utf8_decode("中", 3, &codepoint);
+printf("U+%04X (%d bytes)\n", codepoint, bytes_consumed);  // U+4E2D (3 bytes)
 
-    bytes = utflite_decode(text, 1, &codepoint);
-    printf("'A' = U+%04X (%d byte)\n", codepoint, bytes);
-    // Output: 'A' = U+0041 (1 byte)
-
-    bytes = utflite_decode(text2, 2, &codepoint);
-    printf("e-acute = U+%04X (%d bytes)\n", codepoint, bytes);
-    // Output: e-acute = U+00E9 (2 bytes)
-
-    bytes = utflite_decode(text3, 3, &codepoint);
-    printf("Chinese = U+%04X (%d bytes)\n", codepoint, bytes);
-    // Output: Chinese = U+4E2D (3 bytes)
-
-    return 0;
-}
+// Decode emoji
+bytes_consumed = utf8_decode("😀", 4, &codepoint);
+printf("U+%04X (%d bytes)\n", codepoint, bytes_consumed);  // U+1F600 (4 bytes)
 ```
 
 ### Encoding to UTF-8
 
-Convert a codepoint back to UTF-8 bytes:
+**Problem:** Convert a codepoint to UTF-8 bytes.
 
 ```c
-#include "utflite.h"
-#include <stdio.h>
+char buffer[UTF8_MAX_BYTES];  // Always 4 bytes max
+int bytes_written;
 
-int main(void) {
-    char buffer[UTFLITE_MAX_BYTES];  // Always 4 bytes max
-    int len;
+// Encode ASCII
+bytes_written = utf8_encode('A', buffer);
+printf("Bytes: %d\n", bytes_written);  // 1
 
-    // Encode emoji (U+1F600 = grinning face)
-    len = utflite_encode(0x1F600, buffer);
+// Encode emoji
+bytes_written = utf8_encode(0x1F600, buffer);
+printf("Bytes: %d\n", bytes_written);  // 4
 
-    printf("Emoji is %d bytes: ", len);
-    for (int i = 0; i < len; i++) {
-        printf("%02X ", (unsigned char)buffer[i]);
-    }
-    printf("\n");
-    // Output: Emoji is 4 bytes: F0 9F 98 80
-
-    return 0;
-}
-```
-
-### Iterating Over Characters
-
-Use `utflite_next_char()` to walk through a UTF-8 string character by character:
-
-```c
-#include "utflite.h"
-#include <stdio.h>
-#include <string.h>
-
-int main(void) {
-    // Mixed string: ASCII + Chinese + emoji
-    const char *text = "Hi\xE4\xB8\xAD\xF0\x9F\x98\x80";
-    int len = strlen(text);  // 10 bytes, but only 4 characters
-
-    int offset = 0;
-    int char_num = 0;
-
-    while (offset < len) {
-        uint32_t codepoint;
-        int bytes = utflite_decode(text + offset, len - offset, &codepoint);
-
-        printf("Char %d: U+%04X at byte %d (%d bytes)\n",
-               char_num, codepoint, offset, bytes);
-
-        offset = utflite_next_char(text, len, offset);
-        char_num++;
-    }
-    // Output:
-    // Char 0: U+0048 at byte 0 (1 bytes)   'H'
-    // Char 1: U+0069 at byte 1 (1 bytes)   'i'
-    // Char 2: U+4E2D at byte 2 (3 bytes)   Chinese
-    // Char 3: U+1F600 at byte 5 (4 bytes)  Emoji
-
-    return 0;
-}
-```
-
-### Grapheme Clusters (User-Perceived Characters)
-
-A "character" to users isn't always a single codepoint. Emoji sequences, combining marks, and flags are multiple codepoints that display as one unit. Use `utflite_next_grapheme()` to iterate by what users actually see:
-
-```c
-#include "utflite.h"
-#include <stdio.h>
-#include <string.h>
-
-int main(void) {
-    // Family emoji: 7 codepoints, but 1 grapheme
-    const char *family = "\xF0\x9F\x91\xA8\xE2\x80\x8D\xF0\x9F\x91\xA9\xE2\x80\x8D\xF0\x9F\x91\xA7";
-    int len = strlen(family);
-
-    printf("Family emoji:\n");
-    printf("  Bytes: %d\n", len);                                       // 18
-    printf("  Codepoints: %d\n", utflite_codepoint_count(family, len));  // 7
-    printf("  Graphemes: %d\n", utflite_grapheme_count(family, len));    // 1
-
-    // e + combining acute accent = 1 grapheme
-    const char *accent = "e\xCC\x81";  // é as e + U+0301
-    len = strlen(accent);
-    printf("\ne + acute accent:\n");
-    printf("  Codepoints: %d\n", utflite_codepoint_count(accent, len));  // 2
-    printf("  Graphemes: %d\n", utflite_grapheme_count(accent, len));    // 1
-
-    // Flag: 2 regional indicators = 1 grapheme
-    const char *flag = "\xF0\x9F\x87\xA8\xF0\x9F\x87\xA6";  // 🇨🇦
-    len = strlen(flag);
-    printf("\nCanadian flag:\n");
-    printf("  Codepoints: %d\n", utflite_codepoint_count(flag, len));  // 2
-    printf("  Graphemes: %d\n", utflite_grapheme_count(flag, len));    // 1
-
-    return 0;
-}
-```
-
-This is essential for:
-- Cursor movement in text editors
-- Character counting for length limits
-- Proper text selection
-- Backspace/delete operations
-
-### Character Display Width
-
-Terminals display characters with different widths. ASCII is 1 column, CJK and emoji are 2 columns, combining marks are 0 columns:
-
-```c
-#include "utflite.h"
-#include <stdio.h>
-#include <string.h>
-
-int main(void) {
-    // Check individual codepoints
-    printf("'A' width: %d\n", utflite_codepoint_width(0x0041));      // 1
-    printf("Chinese width: %d\n", utflite_codepoint_width(0x4E2D));  // 2
-    printf("Emoji width: %d\n", utflite_codepoint_width(0x1F600));   // 2
-    printf("Combining accent width: %d\n", utflite_codepoint_width(0x0301)); // 0
-
-    // Calculate total display width of a string
-    const char *text = "Hello\xE4\xB8\xAD";  // "Hello" + Chinese char
-    int width = utflite_string_width(text, strlen(text));
-    printf("'Hello中' display width: %d columns\n", width);  // 7 (5 + 2)
-
-    return 0;
-}
+// Now buffer contains the UTF-8 bytes
 ```
 
 ### Validating UTF-8
 
-Check if a string contains valid UTF-8:
+**Problem:** Check if input is valid UTF-8.
 
 ```c
-#include "utflite.h"
-#include <stdio.h>
+int error_offset;
 
-int main(void) {
-    const char *valid = "Hello \xE4\xB8\xAD";
-    const char *invalid = "Bad \x80\x81 data";  // Invalid continuation bytes
+// Valid UTF-8
+if (utf8_valid("Hello 世界", 12, NULL)) {
+    printf("Valid!\n");
+}
 
-    int error_pos;
-
-    if (utflite_validate(valid, 9, NULL)) {
-        printf("String 1: valid UTF-8\n");
-    }
-
-    if (!utflite_validate(invalid, 11, &error_pos)) {
-        printf("String 2: invalid at byte %d\n", error_pos);
-    }
-    // Output:
-    // String 1: valid UTF-8
-    // String 2: invalid at byte 4
-
-    return 0;
+// Invalid UTF-8
+const char *bad = "Hello \x80\x81 world";  // Invalid bytes
+if (!utf8_valid(bad, 14, &error_offset)) {
+    printf("Invalid at byte %d\n", error_offset);  // 6
 }
 ```
 
-### Truncating for Display
+### Counting Codepoints
 
-When you need to fit text in a fixed-width column, use `utflite_truncate()` to find the correct byte offset:
+**Problem:** How many Unicode codepoints (not graphemes)?
 
 ```c
-#include "utflite.h"
-#include <stdio.h>
-#include <string.h>
+// Family emoji: 1 grapheme, but 7 codepoints
+const char *family = "👨‍👩‍👧";
 
-int main(void) {
-    // String with mixed widths
-    const char *text = "AB\xE4\xB8\xAD\xE4\xB8\xAD" "CD";
-    // A(1) B(1) 中(2) 中(2) C(1) D(1) = 8 columns total
-
-    int len = strlen(text);
-
-    // Truncate to fit in 5 columns
-    int cut = utflite_truncate(text, len, 5);
-
-    printf("Original (%d cols): %s\n", utflite_string_width(text, len), text);
-    printf("Truncated to 5 cols: %.*s\n", cut, text);
-    // Output:
-    // Original (8 cols): AB中中CD
-    // Truncated to 5 cols: AB中
-
-    return 0;
-}
+int codepoints = utf8_cpcount(family, 18);
+printf("Codepoints: %d\n", codepoints);  // 7 (👨 + ZWJ + 👩 + ZWJ + 👧 = 5 emoji + 2 ZWJ)
 ```
 
-### Counting Characters
+### Navigating by Codepoint
 
-Count codepoints (not bytes) in a string:
-
-```c
-#include "utflite.h"
-#include <stdio.h>
-#include <string.h>
-
-int main(void) {
-    const char *text = "Hello\xE4\xB8\xAD\xF0\x9F\x98\x80";
-    int len = strlen(text);
-
-    printf("Bytes: %d\n", len);
-    printf("Characters: %d\n", utflite_codepoint_count(text, len));
-    printf("Display width: %d columns\n", utflite_string_width(text, len));
-    // Output:
-    // Bytes: 12
-    // Characters: 7
-    // Display width: 9
-
-    return 0;
-}
-```
-
-### Handling Invalid Input
-
-`utflite_decode()` never crashes on invalid input. It returns the replacement character (U+FFFD) and advances by 1 byte:
+**Problem:** Move through a string codepoint by codepoint.
 
 ```c
-#include "utflite.h"
-#include <stdio.h>
+const char *text = "A中😀";
+int len = 8;  // 1 + 3 + 4 bytes
+int offset = 0;
 
-int main(void) {
-    // Invalid UTF-8: bare continuation byte
-    const char *bad = "\x80\x81\x82";
-
+while (offset < len) {
     uint32_t cp;
-    int offset = 0;
-
-    while (offset < 3) {
-        int bytes = utflite_decode(bad + offset, 3 - offset, &cp);
-
-        if (cp == UTFLITE_REPLACEMENT_CHAR) {
-            printf("Invalid byte at %d\n", offset);
-        }
-        offset += bytes;
-    }
-    // Output:
-    // Invalid byte at 0
-    // Invalid byte at 1
-    // Invalid byte at 2
-
-    return 0;
+    utf8_decode(text + offset, len - offset, &cp);
+    printf("U+%04X at byte %d\n", cp, offset);
+    
+    offset = utf8_next(text, len, offset);
 }
+// U+0041 at byte 0
+// U+4E2D at byte 1  
+// U+1F600 at byte 4
 ```
 
-## API Reference
+### Navigating by Grapheme
+
+**Problem:** Move through a string grapheme by grapheme.
+
+```c
+const char *text = "e\xCC\x81 👨‍👩‍👧";  // "é" (decomposed) + space + family emoji
+int len = 22;
+int offset = 0;
+int grapheme = 0;
+
+while (offset < len) {
+    int next = utf8_next_grapheme(text, len, offset);
+    printf("Grapheme %d: bytes %d-%d\n", grapheme, offset, next);
+    offset = next;
+    grapheme++;
+}
+// Grapheme 0: bytes 0-3   (e + combining accent)
+// Grapheme 1: bytes 3-4   (space)
+// Grapheme 2: bytes 4-22  (family emoji - 18 bytes!)
+```
+
+### Checking Character Width
+
+**Problem:** How wide is this character in a terminal?
+
+```c
+// ASCII: 1 column
+printf("'A' width: %d\n", utf8_cpwidth('A'));  // 1
+
+// Chinese: 2 columns (double-width)
+printf("'中' width: %d\n", utf8_cpwidth(0x4E2D));  // 2
+
+// Emoji: 2 columns
+printf("'😀' width: %d\n", utf8_cpwidth(0x1F600));  // 2
+
+// Combining mark: 0 columns (overlays previous)
+printf("'́' width: %d\n", utf8_cpwidth(0x0301));  // 0
+
+// Control character: -1 (not printable)
+printf("'\\n' width: %d\n", utf8_cpwidth('\n'));  // -1
+```
+
+### Truncating by Display Width
+
+**Problem:** Cut a string to fit N terminal columns.
+
+```c
+const char *text = "Hello世界";  // 5 + 2 + 2 = 9 columns
+int len = 11;  // 5 + 3 + 3 bytes
+
+// Truncate to 7 columns
+int cut = utf8_truncate(text, len, 7);
+printf("Truncated: %.*s\n", cut, text);  // "Hello世" (5+2=7 cols)
+
+// Truncate to 6 columns (can't fit 世, which needs 2)
+cut = utf8_truncate(text, len, 6);
+printf("Truncated: %.*s\n", cut, text);  // "Hello" (only 5 cols fit)
+```
+
+---
+
+## Complete Function Reference
 
 ### Constants
 
 ```c
-#define UTFLITE_REPLACEMENT_CHAR 0xFFFD  // Returned on decode errors
-#define UTFLITE_MAX_BYTES 4              // Max bytes per codepoint
-#define UTFLITE_UNICODE_VERSION 170      // Unicode 17.0
+#define UTF8_REPLACEMENT_CHAR  0xFFFD   // Returned on decode errors
+#define UTF8_MAX_BYTES         4        // Maximum bytes per codepoint
 ```
 
-### Core Functions
+---
+
+### UTF-8 Layer (14 functions)
+
+#### Encoding/Decoding
+
+| Function | Description |
+|----------|-------------|
+| `utf8_decode(bytes, len, *cp)` | Decode UTF-8 → codepoint. Returns bytes consumed (1-4), 0 on error. |
+| `utf8_encode(codepoint, buffer)` | Encode codepoint → UTF-8. Returns bytes written (1-4), 0 on error. |
+
+#### Validation
+
+| Function | Description |
+|----------|-------------|
+| `utf8_valid(text, len, *err_offset)` | Returns 1 if valid UTF-8, 0 if invalid. Sets error offset if provided. |
+
+#### Codepoint Navigation
+
+| Function | Description |
+|----------|-------------|
+| `utf8_next(text, len, offset)` | Byte offset of next codepoint. |
+| `utf8_prev(text, offset)` | Byte offset of previous codepoint. |
+| `utf8_cpcount(text, len)` | Count codepoints in string. |
+
+#### Grapheme Navigation
+
+| Function | Description |
+|----------|-------------|
+| `utf8_next_grapheme(text, len, offset)` | Byte offset of next grapheme cluster boundary. |
+| `utf8_prev_grapheme(text, offset)` | Byte offset of previous grapheme cluster boundary. |
+
+#### Display Width
+
+| Function | Description |
+|----------|-------------|
+| `utf8_cpwidth(codepoint)` | Width of codepoint: -1 (control), 0 (combining), 1 (normal), 2 (wide). |
+| `utf8_charwidth(text, len, offset)` | Width of UTF-8 character at byte offset. |
+| `utf8_is_zerowidth(codepoint)` | Returns 1 if codepoint is zero-width (combining marks, ZWJ, etc). |
+| `utf8_is_wide(codepoint)` | Returns 1 if codepoint is double-width (CJK, emoji). |
+| `utf8_truncate(text, len, max_cols)` | Byte offset to truncate at max display width. |
+
+---
+
+### Grapheme String Layer (42 functions)
+
+#### Length Functions
 
 ```c
-// Decode UTF-8 to codepoint. Returns bytes consumed (1-4), or 0 for empty/null input.
-int utflite_decode(const char *bytes, int length, uint32_t *codepoint);
-
-// Encode codepoint to UTF-8. Returns bytes written (1-4), 0 on error.
-int utflite_encode(uint32_t codepoint, char *buffer);
+size_t gstrlen(const char *s, size_t byte_len);
 ```
-
-### Character Width
+Count grapheme clusters in string.
 
 ```c
-// Returns display width: -1 (control), 0 (combining), 1 (normal), 2 (wide)
-int utflite_codepoint_width(uint32_t codepoint);
-
-// Width of character at byte offset
-int utflite_char_width(const char *text, int length, int offset);
+size_t gstrnlen(const char *s, size_t byte_len, size_t max_graphemes);
 ```
-
-### Navigation
+Count graphemes up to max_graphemes.
 
 ```c
-// Get byte offset of next/previous character (codepoint)
-int utflite_next_char(const char *text, int length, int offset);
-int utflite_prev_char(const char *text, int offset);
-
-// Grapheme cluster navigation (UAX #29 compliant)
-// Handles emoji sequences, combining marks, flags, Hangul, Indic scripts
-int utflite_next_grapheme(const char *text, int length, int offset);
-int utflite_prev_grapheme(const char *text, int offset);
+size_t gstrwidth(const char *s, size_t byte_len);
 ```
+Calculate display width in terminal columns.
 
-### Utilities
+---
+
+#### Indexing Functions
 
 ```c
-// Validate UTF-8 string. Returns 1 if valid, 0 if invalid.
-int utflite_validate(const char *text, int length, int *error_offset);
-
-// Count codepoints in string
-int utflite_codepoint_count(const char *text, int length);
-// Count grapheme clusters (user-perceived characters)
-int utflite_grapheme_count(const char *text, int length);
-
-// Calculate display width of string
-int utflite_string_width(const char *text, int length);
-
-// Check character properties
-int utflite_is_zero_width(uint32_t codepoint);  // Zero-width (combining, ZWJ, etc)?
-int utflite_is_wide(uint32_t codepoint);        // Double-width (CJK, emoji)?
-
-// Find truncation point for max display columns
-int utflite_truncate(const char *text, int length, int max_cols);
+size_t gstroff(const char *s, size_t byte_len, size_t grapheme_n);
 ```
+Get byte offset of Nth grapheme (0-indexed).
 
-## Building
+```c
+const char *gstrat(const char *s, size_t byte_len, size_t grapheme_n, size_t *out_len);
+```
+Get pointer to Nth grapheme. Stores grapheme's byte length in `out_len`.
+
+---
+
+#### Comparison Functions
+
+```c
+int gstrcmp(const char *a, size_t a_len, const char *b, size_t b_len);
+```
+Compare two strings grapheme-by-grapheme. Returns <0, 0, or >0.
+
+```c
+int gstrncmp(const char *a, size_t a_len, const char *b, size_t b_len, size_t n);
+```
+Compare first N graphemes.
+
+```c
+int gstrcasecmp(const char *a, size_t a_len, const char *b, size_t b_len);
+```
+Case-insensitive compare (ASCII letters only).
+
+```c
+int gstrncasecmp(const char *a, size_t a_len, const char *b, size_t b_len, size_t n);
+```
+Case-insensitive compare of first N graphemes.
+
+---
+
+#### Prefix/Suffix Functions
+
+```c
+int gstrstartswith(const char *s, size_t s_len, const char *prefix, size_t prefix_len);
+```
+Returns 1 if string starts with prefix, 0 otherwise.
+
+```c
+int gstrendswith(const char *s, size_t s_len, const char *suffix, size_t suffix_len);
+```
+Returns 1 if string ends with suffix, 0 otherwise.
+
+---
+
+#### Search Functions
+
+```c
+const char *gstrchr(const char *s, size_t len, const char *grapheme, size_t g_len);
+```
+Find first occurrence of grapheme. Returns pointer or NULL.
+
+```c
+const char *gstrrchr(const char *s, size_t len, const char *grapheme, size_t g_len);
+```
+Find last occurrence of grapheme. Returns pointer or NULL.
+
+```c
+const char *gstrstr(const char *haystack, size_t h_len, const char *needle, size_t n_len);
+```
+Find first occurrence of substring. Returns pointer or NULL.
+
+```c
+const char *gstrrstr(const char *haystack, size_t h_len, const char *needle, size_t n_len);
+```
+Find last occurrence of substring. Returns pointer or NULL.
+
+```c
+const char *gstrcasestr(const char *haystack, size_t h_len, const char *needle, size_t n_len);
+```
+Case-insensitive substring search (ASCII only). Returns pointer or NULL.
+
+```c
+size_t gstrcount(const char *s, size_t len, const char *needle, size_t n_len);
+```
+Count non-overlapping occurrences of needle.
+
+---
+
+#### Span Functions
+
+```c
+size_t gstrspn(const char *s, size_t len, const char *accept, size_t a_len);
+```
+Count leading graphemes that are in accept set.
+
+```c
+size_t gstrcspn(const char *s, size_t len, const char *reject, size_t r_len);
+```
+Count leading graphemes that are NOT in reject set.
+
+```c
+const char *gstrpbrk(const char *s, size_t len, const char *accept, size_t a_len);
+```
+Find first grapheme that is in accept set. Returns pointer or NULL.
+
+---
+
+#### Extraction Functions
+
+```c
+size_t gstrsub(char *dst, size_t dst_size, const char *src, size_t src_len,
+               size_t start_grapheme, size_t count);
+```
+Extract `count` graphemes starting at `start_grapheme` into dst. Returns bytes written (excluding null terminator).
+
+---
+
+#### Copy Functions
+
+```c
+size_t gstrcpy(char *dst, size_t dst_size, const char *src, size_t src_len);
+```
+Copy entire string to dst. Returns bytes written.
+
+```c
+size_t gstrncpy(char *dst, size_t dst_size, const char *src, size_t src_len, size_t n);
+```
+Copy up to N graphemes to dst. Returns bytes written.
+
+---
+
+#### Concatenation Functions
+
+```c
+size_t gstrcat(char *dst, size_t dst_size, const char *src, size_t src_len);
+```
+Append src to dst. Returns total bytes in dst.
+
+```c
+size_t gstrncat(char *dst, size_t dst_size, const char *src, size_t src_len, size_t n);
+```
+Append up to N graphemes from src to dst. Returns total bytes in dst.
+
+---
+
+#### Allocation Functions
+
+```c
+char *gstrdup(const char *s, size_t len);
+```
+Duplicate entire string. Returns malloc'd copy (caller must free).
+
+```c
+char *gstrndup(const char *s, size_t len, size_t n);
+```
+Duplicate first N graphemes. Returns malloc'd copy (caller must free).
+
+---
+
+#### Tokenization Functions
+
+```c
+const char *gstrsep(const char **stringp, size_t *lenp, const char *delim,
+                    size_t d_len, size_t *tok_len);
+```
+Extract next token from string, updating `*stringp` and `*lenp`. Stores token length in `tok_len`. Returns pointer to token or NULL when done.
+
+---
+
+#### Trimming Functions
+
+```c
+size_t gstrltrim(char *dst, size_t dst_size, const char *src, size_t src_len);
+```
+Copy src to dst, removing leading ASCII whitespace. Returns bytes written.
+
+```c
+size_t gstrrtrim(char *dst, size_t dst_size, const char *src, size_t src_len);
+```
+Copy src to dst, removing trailing ASCII whitespace. Returns bytes written.
+
+```c
+size_t gstrtrim(char *dst, size_t dst_size, const char *src, size_t src_len);
+```
+Copy src to dst, removing leading and trailing ASCII whitespace. Returns bytes written.
+
+---
+
+#### Transformation Functions
+
+```c
+size_t gstrrev(char *dst, size_t dst_size, const char *src, size_t src_len);
+```
+Reverse string by graphemes. Returns bytes written.
+
+```c
+size_t gstrreplace(char *dst, size_t dst_size, const char *src, size_t src_len,
+                   const char *old, size_t old_len, const char *new_str, size_t new_len);
+```
+Replace all occurrences of `old` with `new_str`. Returns bytes written.
+
+---
+
+#### Case Conversion Functions
+
+```c
+size_t gstrlower(char *dst, size_t dst_size, const char *src, size_t src_len);
+```
+Convert ASCII letters to lowercase. Returns bytes written.
+
+```c
+size_t gstrupper(char *dst, size_t dst_size, const char *src, size_t src_len);
+```
+Convert ASCII letters to uppercase. Returns bytes written.
+
+---
+
+#### Display/Truncation Functions
+
+```c
+size_t gstrellipsis(char *dst, size_t dst_size, const char *src, size_t src_len,
+                    size_t max_graphemes, const char *ellipsis, size_t ellipsis_len);
+```
+Truncate to max_graphemes and append ellipsis if truncated. Returns bytes written.
+
+---
+
+#### Fill/Padding Functions
+
+```c
+size_t gstrfill(char *dst, size_t dst_size, const char *grapheme, size_t g_len, size_t count);
+```
+Fill buffer with grapheme repeated `count` times. Returns bytes written.
+
+```c
+size_t gstrlpad(char *dst, size_t dst_size, const char *src, size_t src_len,
+                size_t width, const char *pad, size_t pad_len);
+```
+Left-pad string to reach `width` graphemes. Returns bytes written.
+
+```c
+size_t gstrrpad(char *dst, size_t dst_size, const char *src, size_t src_len,
+                size_t width, const char *pad, size_t pad_len);
+```
+Right-pad string to reach `width` graphemes. Returns bytes written.
+
+```c
+size_t gstrpad(char *dst, size_t dst_size, const char *src, size_t src_len,
+               size_t width, const char *pad, size_t pad_len);
+```
+Center string by padding both sides. Returns bytes written.
+
+---
+
+## Building from Source
+
+### Using Make
 
 ```bash
-make              # Build static library (output in build/)
+make              # Build library and single-header
 make test         # Run tests with static library
-make test-single  # Run tests with single-header version
+make test-single  # Run tests with single-header
+make test-all     # Run all tests
 make install      # Install to /usr/local
 make clean        # Clean build artifacts
 ```
 
+### Using the Static Library
+
+After `make install`:
+
+```c
+#include <utflite/gstr.h>
+```
+
+Compile with: `gcc -o myprogram myprogram.c -lgstr`
+
+---
+
+## FAQ
+
+### Why do all functions take byte length?
+
+Because UTF-8 strings aren't null-terminated in the sense that you might have embedded nulls, and because calculating length with `strlen()` on every call would be wasteful. Pass `strlen(s)` if your string is null-terminated.
+
+### Why "grapheme" instead of "character"?
+
+"Character" is ambiguous - it could mean byte, codepoint, or grapheme. "Grapheme cluster" is the Unicode term for what users perceive as a single character. We shorten it to "grapheme" for the API.
+
+### Does this handle all Unicode correctly?
+
+gstr.h implements UAX #29 grapheme cluster segmentation, which handles:
+- Emoji sequences (👨‍👩‍👧, 👋🏻, 🏳️‍🌈)
+- Combining marks (é as e + ́)
+- Regional indicators (🇨🇦)
+- Hangul syllables
+- Indic conjuncts
+
+It does **not** handle:
+- Unicode normalization (NFC/NFD) - use ICU
+- Text shaping (Arabic cursive) - use HarfBuzz
+- Bidirectional text - use FriBidi
+
+### How big is the library?
+
+- Single header: ~110KB source
+- Compiled library: ~25KB
+- No runtime allocations (except gstrdup/gstrndup)
+- No dependencies
+
+### Is it thread-safe?
+
+Yes. All functions are pure (no global state) and only read from their inputs.
+
+---
+
 ## License
 
 MIT License. See LICENSE file.
+
+---
+
+## Version History
+
+### v1.6.0 (January 2026)
+- **Major**: Merged utflite and gstr into unified library
+- Renamed `utflite_*` functions to `utf8_*`
+- Added 10 new functions: `gstrstartswith`, `gstrendswith`, `gstrwidth`, `gstrlower`, `gstrupper`, `gstrellipsis`, `gstrfill`, `gstrlpad`, `gstrrpad`, `gstrpad`
+- Total: 56 functions (14 utf8 + 42 gstr)
+
+### v1.5.3 (January 2026)
+- Added `utflite_grapheme_count()` 
+- Improved test coverage
+
+### v1.5.0 (December 2025)
+- UAX #29 grapheme cluster segmentation
+- 100% pass rate on Unicode GraphemeBreakTest.txt
