@@ -42,7 +42,6 @@ extern "C" {
 /* Maximum bytes needed to encode any Unicode codepoint */
 #define UTF8_MAX_BYTES 4
 
-
 /* ============================================================================
  * Unicode Width Tables
  * ============================================================================
@@ -1048,7 +1047,8 @@ static int is_grapheme_break(enum gcb_property prev_prop,
  * ============================================================================
  */
 
-static inline int utf8_decode(const char *bytes, int length, uint32_t *codepoint) {
+static inline int utf8_decode(const char *bytes, int length,
+                              uint32_t *codepoint) {
   if (length <= 0 || !bytes) {
     *codepoint = UTF8_REPLACEMENT_CHAR;
     return 0;
@@ -1485,7 +1485,8 @@ static inline size_t gstrlen(const char *s, size_t byte_len) {
   return count;
 }
 
-static inline size_t gstrnlen(const char *s, size_t byte_len, size_t max_graphemes) {
+static inline size_t gstrnlen(const char *s, size_t byte_len,
+                              size_t max_graphemes) {
   if (!s || byte_len == 0 || max_graphemes == 0)
     return 0;
 
@@ -1508,11 +1509,42 @@ static inline size_t gstrwidth(const char *s, size_t byte_len) {
   int offset = 0;
 
   while ((size_t)offset < byte_len) {
-    int char_width = utf8_charwidth(s, (int)byte_len, offset);
-    if (char_width > 0) {
-      width += (size_t)char_width;
+    int next = utf8_next_grapheme(s, (int)byte_len, offset);
+
+    /* Scan grapheme for special sequences */
+    int has_zwj = 0;
+    int regional_count = 0;
+    int cp_offset = offset;
+
+    while (cp_offset < next) {
+      uint32_t cp;
+      int cp_bytes = utf8_decode(s + cp_offset, (int)byte_len - cp_offset, &cp);
+      if (cp_bytes <= 0)
+        break;
+      if (cp == 0x200D) {
+        has_zwj = 1;
+      }
+      if (cp >= 0x1F1E6 && cp <= 0x1F1FF) {
+        regional_count++;
+      }
+      cp_offset += cp_bytes;
     }
-    offset = utf8_next(s, (int)byte_len, offset);
+
+    /* Apply heuristics for special emoji */
+    if (has_zwj || regional_count == 2) {
+      width += 2; /* ZWJ sequences and flags render as 2 columns */
+    } else {
+      /* Sum codepoint widths for regular graphemes */
+      cp_offset = offset;
+      while (cp_offset < next) {
+        int cw = utf8_charwidth(s, (int)byte_len, cp_offset);
+        if (cw > 0)
+          width += (size_t)cw;
+        cp_offset = utf8_next(s, (int)byte_len, cp_offset);
+      }
+    }
+
+    offset = next;
   }
 
   return width;
@@ -1523,7 +1555,8 @@ static inline size_t gstrwidth(const char *s, size_t byte_len) {
  * ============================================================================
  */
 
-static inline size_t gstroff(const char *s, size_t byte_len, size_t grapheme_n) {
+static inline size_t gstroff(const char *s, size_t byte_len,
+                             size_t grapheme_n) {
   if (!s)
     return 0;
 
@@ -1538,8 +1571,8 @@ static inline size_t gstroff(const char *s, size_t byte_len, size_t grapheme_n) 
   return (size_t)offset;
 }
 
-static inline const char *gstrat(const char *s, size_t byte_len, size_t grapheme_n,
-                   size_t *out_len) {
+static inline const char *gstrat(const char *s, size_t byte_len,
+                                 size_t grapheme_n, size_t *out_len) {
   if (!s || byte_len == 0)
     return NULL;
 
@@ -1567,7 +1600,8 @@ static inline const char *gstrat(const char *s, size_t byte_len, size_t grapheme
  * ============================================================================
  */
 
-static inline int gstrcmp(const char *a, size_t a_len, const char *b, size_t b_len) {
+static inline int gstrcmp(const char *a, size_t a_len, const char *b,
+                          size_t b_len) {
   if (!a && !b)
     return 0;
   if (!a)
@@ -1600,8 +1634,8 @@ static inline int gstrcmp(const char *a, size_t a_len, const char *b, size_t b_l
   return 1;
 }
 
-static inline int gstrncmp(const char *a, size_t a_len, const char *b, size_t b_len,
-             size_t n) {
+static inline int gstrncmp(const char *a, size_t a_len, const char *b,
+                           size_t b_len, size_t n) {
   if (n == 0)
     return 0;
   if (!a && !b)
@@ -1641,7 +1675,8 @@ static inline int gstrncmp(const char *a, size_t a_len, const char *b, size_t b_
   return 1;
 }
 
-static inline int gstrcasecmp(const char *a, size_t a_len, const char *b, size_t b_len) {
+static inline int gstrcasecmp(const char *a, size_t a_len, const char *b,
+                              size_t b_len) {
   if (!a && !b)
     return 0;
   if (!a)
@@ -1674,8 +1709,8 @@ static inline int gstrcasecmp(const char *a, size_t a_len, const char *b, size_t
   return 1;
 }
 
-static inline int gstrncasecmp(const char *a, size_t a_len, const char *b, size_t b_len,
-                 size_t n) {
+static inline int gstrncasecmp(const char *a, size_t a_len, const char *b,
+                               size_t b_len, size_t n) {
   if (n == 0)
     return 0;
   if (!a && !b)
@@ -1720,8 +1755,8 @@ static inline int gstrncasecmp(const char *a, size_t a_len, const char *b, size_
  * ============================================================================
  */
 
-static inline int gstrstartswith(const char *s, size_t s_len, const char *prefix,
-                   size_t prefix_len) {
+static inline int gstrstartswith(const char *s, size_t s_len,
+                                 const char *prefix, size_t prefix_len) {
   if (!s || !prefix)
     return 0;
   if (prefix_len == 0)
@@ -1754,7 +1789,7 @@ static inline int gstrstartswith(const char *s, size_t s_len, const char *prefix
 }
 
 static inline int gstrendswith(const char *s, size_t s_len, const char *suffix,
-                 size_t suffix_len) {
+                               size_t suffix_len) {
   if (!s || !suffix)
     return 0;
   if (suffix_len == 0)
@@ -1802,8 +1837,8 @@ static inline int gstrendswith(const char *s, size_t s_len, const char *suffix,
  * ============================================================================
  */
 
-static inline const char *gstrchr(const char *s, size_t len, const char *grapheme,
-                    size_t g_len) {
+static inline const char *gstrchr(const char *s, size_t len,
+                                  const char *grapheme, size_t g_len) {
   if (!s || len == 0 || !grapheme || g_len == 0)
     return NULL;
 
@@ -1823,8 +1858,8 @@ static inline const char *gstrchr(const char *s, size_t len, const char *graphem
   return NULL;
 }
 
-static inline const char *gstrrchr(const char *s, size_t len, const char *grapheme,
-                     size_t g_len) {
+static inline const char *gstrrchr(const char *s, size_t len,
+                                   const char *grapheme, size_t g_len) {
   if (!s || len == 0 || !grapheme || g_len == 0)
     return NULL;
 
@@ -1845,8 +1880,8 @@ static inline const char *gstrrchr(const char *s, size_t len, const char *graphe
   return last_match;
 }
 
-static inline const char *gstrstr(const char *haystack, size_t h_len, const char *needle,
-                    size_t n_len) {
+static inline const char *gstrstr(const char *haystack, size_t h_len,
+                                  const char *needle, size_t n_len) {
   if (!haystack || !needle)
     return NULL;
   if (n_len == 0)
@@ -1898,8 +1933,8 @@ static inline const char *gstrstr(const char *haystack, size_t h_len, const char
   return NULL;
 }
 
-static inline const char *gstrrstr(const char *haystack, size_t h_len, const char *needle,
-                     size_t n_len) {
+static inline const char *gstrrstr(const char *haystack, size_t h_len,
+                                   const char *needle, size_t n_len) {
   if (!haystack || !needle)
     return NULL;
   if (n_len == 0)
@@ -1952,8 +1987,8 @@ static inline const char *gstrrstr(const char *haystack, size_t h_len, const cha
   return last_match;
 }
 
-static inline const char *gstrcasestr(const char *haystack, size_t h_len, const char *needle,
-                        size_t n_len) {
+static inline const char *gstrcasestr(const char *haystack, size_t h_len,
+                                      const char *needle, size_t n_len) {
   if (!haystack || !needle)
     return NULL;
   if (n_len == 0)
@@ -2005,7 +2040,8 @@ static inline const char *gstrcasestr(const char *haystack, size_t h_len, const 
   return NULL;
 }
 
-static inline size_t gstrcount(const char *s, size_t len, const char *needle, size_t n_len) {
+static inline size_t gstrcount(const char *s, size_t len, const char *needle,
+                               size_t n_len) {
   if (!s || len == 0 || !needle || n_len == 0)
     return 0;
 
@@ -2035,7 +2071,8 @@ static inline size_t gstrcount(const char *s, size_t len, const char *needle, si
  * ============================================================================
  */
 
-static inline size_t gstrspn(const char *s, size_t len, const char *accept, size_t a_len) {
+static inline size_t gstrspn(const char *s, size_t len, const char *accept,
+                             size_t a_len) {
   if (!s || len == 0 || !accept || a_len == 0)
     return 0;
 
@@ -2057,7 +2094,8 @@ static inline size_t gstrspn(const char *s, size_t len, const char *accept, size
   return count;
 }
 
-static inline size_t gstrcspn(const char *s, size_t len, const char *reject, size_t r_len) {
+static inline size_t gstrcspn(const char *s, size_t len, const char *reject,
+                              size_t r_len) {
   if (!s || len == 0)
     return 0;
   if (!reject || r_len == 0)
@@ -2081,8 +2119,8 @@ static inline size_t gstrcspn(const char *s, size_t len, const char *reject, siz
   return count;
 }
 
-static inline const char *gstrpbrk(const char *s, size_t len, const char *accept,
-                     size_t a_len) {
+static inline const char *gstrpbrk(const char *s, size_t len,
+                                   const char *accept, size_t a_len) {
   if (!s || len == 0 || !accept || a_len == 0)
     return NULL;
 
@@ -2107,8 +2145,9 @@ static inline const char *gstrpbrk(const char *s, size_t len, const char *accept
  * ============================================================================
  */
 
-static inline size_t gstrsub(char *dst, size_t dst_size, const char *src, size_t src_len,
-               size_t start_grapheme, size_t count) {
+static inline size_t gstrsub(char *dst, size_t dst_size, const char *src,
+                             size_t src_len, size_t start_grapheme,
+                             size_t count) {
   if (!dst || dst_size == 0)
     return 0;
 
@@ -2158,7 +2197,8 @@ static inline size_t gstrsub(char *dst, size_t dst_size, const char *src, size_t
  * ============================================================================
  */
 
-static inline size_t gstrcpy(char *dst, size_t dst_size, const char *src, size_t src_len) {
+static inline size_t gstrcpy(char *dst, size_t dst_size, const char *src,
+                             size_t src_len) {
   if (!dst || dst_size == 0)
     return 0;
 
@@ -2190,8 +2230,8 @@ static inline size_t gstrcpy(char *dst, size_t dst_size, const char *src, size_t
   return (size_t)last_complete;
 }
 
-static inline size_t gstrncpy(char *dst, size_t dst_size, const char *src, size_t src_len,
-                size_t n) {
+static inline size_t gstrncpy(char *dst, size_t dst_size, const char *src,
+                              size_t src_len, size_t n) {
   if (!dst || dst_size == 0)
     return 0;
 
@@ -2236,7 +2276,8 @@ static inline size_t gstrncpy(char *dst, size_t dst_size, const char *src, size_
  * ============================================================================
  */
 
-static inline size_t gstrcat(char *dst, size_t dst_size, const char *src, size_t src_len) {
+static inline size_t gstrcat(char *dst, size_t dst_size, const char *src,
+                             size_t src_len) {
   if (!dst || dst_size == 0)
     return 0;
 
@@ -2271,8 +2312,8 @@ static inline size_t gstrcat(char *dst, size_t dst_size, const char *src, size_t
   return dst_len + (size_t)last_complete;
 }
 
-static inline size_t gstrncat(char *dst, size_t dst_size, const char *src, size_t src_len,
-                size_t n) {
+static inline size_t gstrncat(char *dst, size_t dst_size, const char *src,
+                              size_t src_len, size_t n) {
   if (!dst || dst_size == 0)
     return 0;
 
@@ -2356,8 +2397,9 @@ static inline char *gstrndup(const char *s, size_t len, size_t n) {
  * ============================================================================
  */
 
-static inline const char *gstrsep(const char **stringp, size_t *lenp, const char *delim,
-                    size_t d_len, size_t *tok_len) {
+static inline const char *gstrsep(const char **stringp, size_t *lenp,
+                                  const char *delim, size_t d_len,
+                                  size_t *tok_len) {
   if (!stringp || !*stringp || !lenp)
     return NULL;
 
@@ -2405,7 +2447,8 @@ static inline const char *gstrsep(const char **stringp, size_t *lenp, const char
  * ============================================================================
  */
 
-static inline size_t gstrltrim(char *dst, size_t dst_size, const char *src, size_t src_len) {
+static inline size_t gstrltrim(char *dst, size_t dst_size, const char *src,
+                               size_t src_len) {
   if (!dst || dst_size == 0)
     return 0;
 
@@ -2430,7 +2473,8 @@ static inline size_t gstrltrim(char *dst, size_t dst_size, const char *src, size
   return gstrcpy(dst, dst_size, src + offset, remaining);
 }
 
-static inline size_t gstrrtrim(char *dst, size_t dst_size, const char *src, size_t src_len) {
+static inline size_t gstrrtrim(char *dst, size_t dst_size, const char *src,
+                               size_t src_len) {
   if (!dst || dst_size == 0)
     return 0;
 
@@ -2455,7 +2499,8 @@ static inline size_t gstrrtrim(char *dst, size_t dst_size, const char *src, size
   return gstrcpy(dst, dst_size, src, (size_t)last_non_ws_end);
 }
 
-static inline size_t gstrtrim(char *dst, size_t dst_size, const char *src, size_t src_len) {
+static inline size_t gstrtrim(char *dst, size_t dst_size, const char *src,
+                              size_t src_len) {
   if (!dst || dst_size == 0)
     return 0;
 
@@ -2501,7 +2546,8 @@ static inline size_t gstrtrim(char *dst, size_t dst_size, const char *src, size_
  * ============================================================================
  */
 
-static inline size_t gstrrev(char *dst, size_t dst_size, const char *src, size_t src_len) {
+static inline size_t gstrrev(char *dst, size_t dst_size, const char *src,
+                             size_t src_len) {
   if (!dst || dst_size == 0)
     return 0;
 
@@ -2547,9 +2593,10 @@ static inline size_t gstrrev(char *dst, size_t dst_size, const char *src, size_t
   return written;
 }
 
-static inline size_t gstrreplace(char *dst, size_t dst_size, const char *src, size_t src_len,
-                   const char *old_str, size_t old_len, const char *new_str,
-                   size_t new_len) {
+static inline size_t gstrreplace(char *dst, size_t dst_size, const char *src,
+                                 size_t src_len, const char *old_str,
+                                 size_t old_len, const char *new_str,
+                                 size_t new_len) {
   if (!dst || dst_size == 0)
     return 0;
 
@@ -2655,7 +2702,8 @@ static inline size_t gstrreplace(char *dst, size_t dst_size, const char *src, si
  * ============================================================================
  */
 
-static inline size_t gstrlower(char *dst, size_t dst_size, const char *src, size_t src_len) {
+static inline size_t gstrlower(char *dst, size_t dst_size, const char *src,
+                               size_t src_len) {
   if (!dst || dst_size == 0)
     return 0;
 
@@ -2691,7 +2739,8 @@ static inline size_t gstrlower(char *dst, size_t dst_size, const char *src, size
   return (size_t)last_complete;
 }
 
-static inline size_t gstrupper(char *dst, size_t dst_size, const char *src, size_t src_len) {
+static inline size_t gstrupper(char *dst, size_t dst_size, const char *src,
+                               size_t src_len) {
   if (!dst || dst_size == 0)
     return 0;
 
@@ -2732,9 +2781,9 @@ static inline size_t gstrupper(char *dst, size_t dst_size, const char *src, size
  * ============================================================================
  */
 
-static inline size_t gstrellipsis(char *dst, size_t dst_size, const char *src, size_t src_len,
-                    size_t max_graphemes, const char *ellipsis,
-                    size_t ellipsis_len) {
+static inline size_t gstrellipsis(char *dst, size_t dst_size, const char *src,
+                                  size_t src_len, size_t max_graphemes,
+                                  const char *ellipsis, size_t ellipsis_len) {
   if (!dst || dst_size == 0)
     return 0;
 
@@ -2801,8 +2850,8 @@ static inline size_t gstrellipsis(char *dst, size_t dst_size, const char *src, s
  * ============================================================================
  */
 
-static inline size_t gstrfill(char *dst, size_t dst_size, const char *grapheme, size_t g_len,
-                size_t count) {
+static inline size_t gstrfill(char *dst, size_t dst_size, const char *grapheme,
+                              size_t g_len, size_t count) {
   if (!dst || dst_size == 0)
     return 0;
 
@@ -2825,8 +2874,9 @@ static inline size_t gstrfill(char *dst, size_t dst_size, const char *grapheme, 
   return written;
 }
 
-static inline size_t gstrlpad(char *dst, size_t dst_size, const char *src, size_t src_len,
-                size_t width, const char *pad, size_t pad_len) {
+static inline size_t gstrlpad(char *dst, size_t dst_size, const char *src,
+                              size_t src_len, size_t width, const char *pad,
+                              size_t pad_len) {
   if (!dst || dst_size == 0)
     return 0;
 
@@ -2888,8 +2938,9 @@ static inline size_t gstrlpad(char *dst, size_t dst_size, const char *src, size_
   return written;
 }
 
-static inline size_t gstrrpad(char *dst, size_t dst_size, const char *src, size_t src_len,
-                size_t width, const char *pad, size_t pad_len) {
+static inline size_t gstrrpad(char *dst, size_t dst_size, const char *src,
+                              size_t src_len, size_t width, const char *pad,
+                              size_t pad_len) {
   if (!dst || dst_size == 0)
     return 0;
 
@@ -2947,8 +2998,9 @@ static inline size_t gstrrpad(char *dst, size_t dst_size, const char *src, size_
   return written;
 }
 
-static inline size_t gstrpad(char *dst, size_t dst_size, const char *src, size_t src_len,
-               size_t width, const char *pad, size_t pad_len) {
+static inline size_t gstrpad(char *dst, size_t dst_size, const char *src,
+                             size_t src_len, size_t width, const char *pad,
+                             size_t pad_len) {
   if (!dst || dst_size == 0)
     return 0;
 
@@ -2972,6 +3024,332 @@ static inline size_t gstrpad(char *dst, size_t dst_size, const char *src, size_t
   size_t total_pad = width - src_graphemes;
   size_t left_pad = total_pad / 2;
   size_t right_pad = total_pad - left_pad;
+
+  size_t written = 0;
+
+  /* Add left padding */
+  for (size_t i = 0; i < left_pad; i++) {
+    if (written + pad_len >= dst_size) {
+      break;
+    }
+    memcpy(dst + written, pad, pad_len);
+    written += pad_len;
+  }
+
+  /* Add source */
+  if (src && src_len > 0) {
+    size_t remaining = dst_size - written - 1;
+    if (remaining > 0) {
+      size_t to_copy = src_len;
+      if (to_copy > remaining) {
+        int offset = 0;
+        int last_complete = 0;
+        while ((size_t)offset < to_copy && (size_t)offset < remaining) {
+          int next = utf8_next_grapheme(src, (int)src_len, offset);
+          if ((size_t)next <= remaining) {
+            last_complete = next;
+          } else {
+            break;
+          }
+          offset = next;
+        }
+        to_copy = (size_t)last_complete;
+      }
+      memcpy(dst + written, src, to_copy);
+      written += to_copy;
+    }
+  }
+
+  /* Add right padding */
+  for (size_t i = 0; i < right_pad; i++) {
+    if (written + pad_len >= dst_size) {
+      break;
+    }
+    memcpy(dst + written, pad, pad_len);
+    written += pad_len;
+  }
+
+  dst[written] = '\0';
+  return written;
+}
+
+/* ============================================================================
+ * Grapheme String Layer: Column-Width-Aware Functions
+ * ============================================================================
+ */
+
+/**
+ * Helper: Calculate column width of a single grapheme at the given offset.
+ * Handles ZWJ sequences and regional indicator (flag) emoji.
+ */
+static inline size_t gstr_grapheme_width(const char *s, size_t byte_len,
+                                         int offset, int next) {
+  /* Scan grapheme for special sequences */
+  int has_zwj = 0;
+  int regional_count = 0;
+  int cp_offset = offset;
+
+  while (cp_offset < next) {
+    uint32_t cp;
+    int cp_bytes = utf8_decode(s + cp_offset, (int)byte_len - cp_offset, &cp);
+    if (cp_bytes <= 0)
+      break;
+    if (cp == 0x200D) {
+      has_zwj = 1;
+    }
+    if (cp >= 0x1F1E6 && cp <= 0x1F1FF) {
+      regional_count++;
+    }
+    cp_offset += cp_bytes;
+  }
+
+  /* ZWJ sequences and flags render as 2 columns */
+  if (has_zwj || regional_count == 2) {
+    return 2;
+  }
+
+  /* Sum codepoint widths for regular graphemes */
+  size_t width = 0;
+  cp_offset = offset;
+  while (cp_offset < next) {
+    int cw = utf8_charwidth(s, (int)byte_len, cp_offset);
+    if (cw > 0)
+      width += (size_t)cw;
+    cp_offset = utf8_next(s, (int)byte_len, cp_offset);
+  }
+  return width;
+}
+
+static inline size_t gstrwtrunc(char *dst, size_t dst_size, const char *src,
+                                size_t src_len, size_t max_cols) {
+  if (!dst || dst_size == 0)
+    return 0;
+
+  dst[0] = '\0';
+
+  if (!src || src_len == 0 || max_cols == 0)
+    return 0;
+
+  size_t accumulated = 0;
+  int offset = 0;
+  int last_valid = 0;
+
+  while ((size_t)offset < src_len) {
+    int next = utf8_next_grapheme(src, (int)src_len, offset);
+    size_t gwidth = gstr_grapheme_width(src, src_len, offset, next);
+
+    if (accumulated + gwidth > max_cols) {
+      break;
+    }
+
+    accumulated += gwidth;
+    last_valid = next;
+    offset = next;
+  }
+
+  /* Copy bytes up to last complete grapheme */
+  size_t to_copy = (size_t)last_valid;
+  if (to_copy >= dst_size) {
+    to_copy = dst_size - 1;
+    /* Find last complete grapheme that fits in buffer */
+    int off = 0;
+    int last = 0;
+    while ((size_t)off < to_copy) {
+      int n = utf8_next_grapheme(src, (int)src_len, off);
+      if ((size_t)n <= to_copy) {
+        last = n;
+      } else {
+        break;
+      }
+      off = n;
+    }
+    to_copy = (size_t)last;
+  }
+
+  if (to_copy > 0) {
+    memcpy(dst, src, to_copy);
+  }
+  dst[to_copy] = '\0';
+  return to_copy;
+}
+
+static inline size_t gstrwlpad(char *dst, size_t dst_size, const char *src,
+                               size_t src_len, size_t target_cols,
+                               const char *pad, size_t pad_len) {
+  if (!dst || dst_size == 0)
+    return 0;
+
+  dst[0] = '\0';
+
+  /* Default pad */
+  if (!pad || pad_len == 0) {
+    pad = " ";
+    pad_len = 1;
+  }
+
+  /* Calculate source column width */
+  size_t src_width = src ? gstrwidth(src, src_len) : 0;
+
+  /* If source is already wide enough, truncate it */
+  if (src_width >= target_cols) {
+    return src ? gstrwtrunc(dst, dst_size, src, src_len, target_cols) : 0;
+  }
+
+  /* Calculate padding needed in columns */
+  size_t pad_cols_needed = target_cols - src_width;
+
+  /* Calculate pad character's column width */
+  size_t pad_char_width = gstrwidth(pad, pad_len);
+  if (pad_char_width == 0)
+    pad_char_width = 1;
+
+  /* Calculate number of pad characters needed */
+  size_t pad_count = pad_cols_needed / pad_char_width;
+
+  size_t written = 0;
+
+  /* Add left padding */
+  for (size_t i = 0; i < pad_count; i++) {
+    if (written + pad_len >= dst_size) {
+      break;
+    }
+    memcpy(dst + written, pad, pad_len);
+    written += pad_len;
+  }
+
+  /* Add source */
+  if (src && src_len > 0) {
+    size_t remaining = dst_size - written - 1;
+    if (remaining > 0) {
+      size_t to_copy = src_len;
+      if (to_copy > remaining) {
+        /* Find last complete grapheme that fits */
+        int offset = 0;
+        int last_complete = 0;
+        while ((size_t)offset < to_copy && (size_t)offset < remaining) {
+          int next = utf8_next_grapheme(src, (int)src_len, offset);
+          if ((size_t)next <= remaining) {
+            last_complete = next;
+          } else {
+            break;
+          }
+          offset = next;
+        }
+        to_copy = (size_t)last_complete;
+      }
+      memcpy(dst + written, src, to_copy);
+      written += to_copy;
+    }
+  }
+
+  dst[written] = '\0';
+  return written;
+}
+
+static inline size_t gstrwrpad(char *dst, size_t dst_size, const char *src,
+                               size_t src_len, size_t target_cols,
+                               const char *pad, size_t pad_len) {
+  if (!dst || dst_size == 0)
+    return 0;
+
+  dst[0] = '\0';
+
+  /* Default pad */
+  if (!pad || pad_len == 0) {
+    pad = " ";
+    pad_len = 1;
+  }
+
+  /* Calculate source column width */
+  size_t src_width = src ? gstrwidth(src, src_len) : 0;
+
+  /* If source is already wide enough, truncate it */
+  if (src_width >= target_cols) {
+    return src ? gstrwtrunc(dst, dst_size, src, src_len, target_cols) : 0;
+  }
+
+  size_t written = 0;
+
+  /* Add source first */
+  if (src && src_len > 0) {
+    size_t to_copy = src_len;
+    if (to_copy >= dst_size) {
+      /* Find last complete grapheme that fits */
+      int offset = 0;
+      int last_complete = 0;
+      while ((size_t)offset < to_copy && (size_t)offset < dst_size - 1) {
+        int next = utf8_next_grapheme(src, (int)src_len, offset);
+        if ((size_t)next < dst_size) {
+          last_complete = next;
+        } else {
+          break;
+        }
+        offset = next;
+      }
+      to_copy = (size_t)last_complete;
+    }
+    memcpy(dst, src, to_copy);
+    written = to_copy;
+  }
+
+  /* Calculate padding needed in columns */
+  size_t pad_cols_needed = target_cols - src_width;
+
+  /* Calculate pad character's column width */
+  size_t pad_char_width = gstrwidth(pad, pad_len);
+  if (pad_char_width == 0)
+    pad_char_width = 1;
+
+  /* Calculate number of pad characters needed */
+  size_t pad_count = pad_cols_needed / pad_char_width;
+
+  /* Add right padding */
+  for (size_t i = 0; i < pad_count; i++) {
+    if (written + pad_len >= dst_size) {
+      break;
+    }
+    memcpy(dst + written, pad, pad_len);
+    written += pad_len;
+  }
+
+  dst[written] = '\0';
+  return written;
+}
+
+static inline size_t gstrwpad(char *dst, size_t dst_size, const char *src,
+                              size_t src_len, size_t target_cols,
+                              const char *pad, size_t pad_len) {
+  if (!dst || dst_size == 0)
+    return 0;
+
+  dst[0] = '\0';
+
+  /* Default pad */
+  if (!pad || pad_len == 0) {
+    pad = " ";
+    pad_len = 1;
+  }
+
+  /* Calculate source column width */
+  size_t src_width = src ? gstrwidth(src, src_len) : 0;
+
+  /* If source is already wide enough, truncate it */
+  if (src_width >= target_cols) {
+    return src ? gstrwtrunc(dst, dst_size, src, src_len, target_cols) : 0;
+  }
+
+  /* Calculate padding needed in columns */
+  size_t total_pad_cols = target_cols - src_width;
+
+  /* Calculate pad character's column width */
+  size_t pad_char_width = gstrwidth(pad, pad_len);
+  if (pad_char_width == 0)
+    pad_char_width = 1;
+
+  /* Calculate total pad characters needed */
+  size_t total_pad_count = total_pad_cols / pad_char_width;
+  size_t left_pad = total_pad_count / 2;
+  size_t right_pad = total_pad_count - left_pad;
 
   size_t written = 0;
 

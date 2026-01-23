@@ -1126,6 +1126,156 @@ TEST(gstrwidth_combining) {
   ASSERT_EQ_SIZE(gstrwidth(CAFE_DECOMPOSED, CAFE_DECOMPOSED_LEN), 4);
 }
 
+TEST(gstrwidth_zwj_family) {
+  /* ZWJ family emoji (👨‍👩‍👧) should be 2 columns, not 6 */
+  ASSERT_EQ_SIZE(gstrwidth(FAMILY, FAMILY_LEN), 2);
+}
+
+TEST(gstrwidth_flag) {
+  /* Flag emoji (🇨🇦) should be 2 columns, not 4 */
+  ASSERT_EQ_SIZE(gstrwidth(FLAG_CA, FLAG_CA_LEN), 2);
+}
+
+TEST(gstrwidth_skin_tone) {
+  /* Emoji with skin tone modifier should be 2 columns */
+  ASSERT_EQ_SIZE(gstrwidth(WAVE_SKIN, WAVE_SKIN_LEN), 2);
+}
+
+/* ============================================================================
+ * Column-Width Truncation Tests (gstrwtrunc)
+ * ============================================================================
+ */
+
+TEST(gstrwtrunc_ascii) {
+  char buf[32];
+  size_t n = gstrwtrunc(buf, sizeof(buf), "Hello World", 11, 5);
+  ASSERT_STR_EQ(buf, "Hello");
+  ASSERT_EQ_SIZE(n, 5);
+}
+
+TEST(gstrwtrunc_cjk) {
+  /* "日本語" - each CJK char is 2 columns */
+  const char *cjk = "\xE6\x97\xA5\xE6\x9C\xAC\xE8\xAA\x9E";
+  char buf[32];
+  /* Truncate to 4 columns = 2 CJK characters */
+  size_t n = gstrwtrunc(buf, sizeof(buf), cjk, 9, 4);
+  ASSERT_EQ_SIZE(n, 6); /* 2 chars × 3 bytes each */
+  /* Truncate to 3 columns = only 1 CJK char fits (2 cols), can't fit half */
+  n = gstrwtrunc(buf, sizeof(buf), cjk, 9, 3);
+  ASSERT_EQ_SIZE(n, 3); /* 1 char × 3 bytes */
+}
+
+TEST(gstrwtrunc_emoji) {
+  char buf[32];
+  /* Family emoji is 2 columns; truncate to 1 = nothing fits */
+  size_t n = gstrwtrunc(buf, sizeof(buf), FAMILY, FAMILY_LEN, 1);
+  ASSERT_EQ_SIZE(n, 0);
+  ASSERT_STR_EQ(buf, "");
+  /* Truncate to 2 = emoji fits */
+  n = gstrwtrunc(buf, sizeof(buf), FAMILY, FAMILY_LEN, 2);
+  ASSERT_EQ_SIZE(n, FAMILY_LEN);
+}
+
+TEST(gstrwtrunc_mixed) {
+  /* "Hi 👋🏽!" = H(1) + i(1) + space(1) + wave(2) + !(1) = 6 columns */
+  char buf[32];
+  /* Truncate to 4 columns = "Hi " + wave doesn't fit = "Hi " */
+  size_t n = gstrwtrunc(buf, sizeof(buf), MIXED, MIXED_LEN, 4);
+  ASSERT_STR_EQ(buf, "Hi ");
+  ASSERT_EQ_SIZE(n, 3);
+}
+
+TEST(gstrwtrunc_empty) {
+  char buf[32];
+  size_t n = gstrwtrunc(buf, sizeof(buf), "", 0, 10);
+  ASSERT_EQ_SIZE(n, 0);
+  ASSERT_STR_EQ(buf, "");
+}
+
+TEST(gstrwtrunc_zero_cols) {
+  char buf[32];
+  size_t n = gstrwtrunc(buf, sizeof(buf), "Hello", 5, 0);
+  ASSERT_EQ_SIZE(n, 0);
+  ASSERT_STR_EQ(buf, "");
+}
+
+/* ============================================================================
+ * Column-Width Padding Tests (gstrwlpad, gstrwrpad, gstrwpad)
+ * ============================================================================
+ */
+
+TEST(gstrwlpad_basic) {
+  char buf[32];
+  size_t n = gstrwlpad(buf, sizeof(buf), "Hi", 2, 5, NULL, 0);
+  ASSERT_STR_EQ(buf, "   Hi");
+  ASSERT_EQ_SIZE(n, 5);
+}
+
+TEST(gstrwlpad_cjk) {
+  /* Pad CJK string to 6 columns */
+  const char *cjk = "\xE6\x97\xA5"; /* "日" = 2 columns */
+  char buf[32];
+  size_t n = gstrwlpad(buf, sizeof(buf), cjk, 3, 6, NULL, 0);
+  /* Need 4 columns of padding = 4 spaces */
+  ASSERT_STR_EQ(buf, "    \xE6\x97\xA5");
+  ASSERT_EQ_SIZE(n, 7); /* 4 spaces + 3 bytes */
+}
+
+TEST(gstrwlpad_already_wide) {
+  char buf[32];
+  size_t n = gstrwlpad(buf, sizeof(buf), "Hello", 5, 3, NULL, 0);
+  /* Source wider than target, should truncate */
+  ASSERT_STR_EQ(buf, "Hel");
+  ASSERT_EQ_SIZE(n, 3);
+}
+
+TEST(gstrwrpad_basic) {
+  char buf[32];
+  size_t n = gstrwrpad(buf, sizeof(buf), "Hi", 2, 5, NULL, 0);
+  ASSERT_STR_EQ(buf, "Hi   ");
+  ASSERT_EQ_SIZE(n, 5);
+}
+
+TEST(gstrwrpad_cjk) {
+  const char *cjk = "\xE6\x97\xA5"; /* "日" = 2 columns */
+  char buf[32];
+  size_t n = gstrwrpad(buf, sizeof(buf), cjk, 3, 6, NULL, 0);
+  ASSERT_STR_EQ(buf, "\xE6\x97\xA5    ");
+  ASSERT_EQ_SIZE(n, 7);
+}
+
+TEST(gstrwpad_basic) {
+  char buf[32];
+  size_t n = gstrwpad(buf, sizeof(buf), "Hi", 2, 6, NULL, 0);
+  /* 4 columns padding total, split 2 left + 2 right */
+  ASSERT_STR_EQ(buf, "  Hi  ");
+  ASSERT_EQ_SIZE(n, 6);
+}
+
+TEST(gstrwpad_odd_padding) {
+  char buf[32];
+  size_t n = gstrwpad(buf, sizeof(buf), "X", 1, 6, NULL, 0);
+  /* 5 columns padding, split 2 left + 3 right */
+  ASSERT_STR_EQ(buf, "  X   ");
+  ASSERT_EQ_SIZE(n, 6);
+}
+
+TEST(gstrwpad_emoji_source) {
+  char buf[64];
+  /* Family emoji is 2 columns, pad to 6 */
+  size_t n = gstrwpad(buf, sizeof(buf), FAMILY, FAMILY_LEN, 6, NULL, 0);
+  /* 4 columns padding, split 2 left + 2 right */
+  ASSERT_EQ_SIZE(n, FAMILY_LEN + 4); /* 18 bytes + 4 spaces */
+}
+
+TEST(gstrwpad_wide_pad_char) {
+  char buf[32];
+  const char *wide_pad = "\xE3\x80\x80"; /* Ideographic space (2 cols) */
+  size_t n = gstrwlpad(buf, sizeof(buf), "X", 1, 5, wide_pad, 3);
+  /* Need 4 columns = 2 wide pads */
+  ASSERT_EQ_SIZE(n, 7); /* 6 bytes for pads + 1 for X */
+}
+
 /* ============================================================================
  * gstrlower/gstrupper Tests
  * ============================================================================
@@ -1510,6 +1660,28 @@ int main(void) {
   RUN(gstrwidth_cjk);
   RUN(gstrwidth_emoji);
   RUN(gstrwidth_combining);
+  RUN(gstrwidth_zwj_family);
+  RUN(gstrwidth_flag);
+  RUN(gstrwidth_skin_tone);
+
+  printf("\ngstrwtrunc Tests:\n");
+  RUN(gstrwtrunc_ascii);
+  RUN(gstrwtrunc_cjk);
+  RUN(gstrwtrunc_emoji);
+  RUN(gstrwtrunc_mixed);
+  RUN(gstrwtrunc_empty);
+  RUN(gstrwtrunc_zero_cols);
+
+  printf("\ngstrwlpad/gstrwrpad/gstrwpad Tests:\n");
+  RUN(gstrwlpad_basic);
+  RUN(gstrwlpad_cjk);
+  RUN(gstrwlpad_already_wide);
+  RUN(gstrwrpad_basic);
+  RUN(gstrwrpad_cjk);
+  RUN(gstrwpad_basic);
+  RUN(gstrwpad_odd_padding);
+  RUN(gstrwpad_emoji_source);
+  RUN(gstrwpad_wide_pad_char);
 
   printf("\ngstrlower/gstrupper Tests:\n");
   RUN(gstrlower_basic);
