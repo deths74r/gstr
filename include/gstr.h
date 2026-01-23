@@ -23,7 +23,7 @@
  *   - All functions take (ptr, len) pairs for explicit bounds
  *
  * Usage:
- *   #include <utflite/gstr.h>
+ *   #include <gstr.h>
  *
  * Or use the single-header version:
  *   #define GSTR_IMPLEMENTATION

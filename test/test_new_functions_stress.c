@@ -11,7 +11,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include <utflite/gstr.h>
+#include <gstr.h>
 
 static int tests_passed = 0;
 static int tests_failed = 0;

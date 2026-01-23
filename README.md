@@ -998,7 +998,7 @@ make clean        # Clean build artifacts
 After `make install`:
 
 ```c
-#include <utflite/gstr.h>
+#include <gstr.h>
 ```
 
 Compile with: `gcc -o myprogram myprogram.c -lgstr`
@@ -1051,13 +1051,13 @@ MIT License. See LICENSE file.
 ## Version History
 
 ### v1.6.0 (January 2026)
-- **Major**: Merged utflite and gstr into unified library
-- Renamed `utflite_*` functions to `utf8_*`
+- **Major**: Merged UTF-8 and grapheme functionality into unified library
+- Renamed legacy `utflite_*` functions to `utf8_*`
 - Added 10 new functions: `gstrstartswith`, `gstrendswith`, `gstrwidth`, `gstrlower`, `gstrupper`, `gstrellipsis`, `gstrfill`, `gstrlpad`, `gstrrpad`, `gstrpad`
 - Total: 56 functions (14 utf8 + 42 gstr)
 
 ### v1.5.3 (January 2026)
-- Added `utflite_grapheme_count()` 
+- Added `gstrlen()` (grapheme count) 
 - Improved test coverage
 
 ### v1.5.0 (December 2025)

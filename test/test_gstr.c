@@ -11,7 +11,7 @@
 #define GSTR_IMPLEMENTATION
 #include "gstr.h"
 #else
-#include <utflite/gstr.h>
+#include <gstr.h>
 #endif
 
 static int tests_passed = 0;

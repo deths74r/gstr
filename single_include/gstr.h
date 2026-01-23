@@ -44,13 +44,12 @@
  *   - All functions take (ptr, len) pairs for explicit bounds
  *
  * Usage:
- *   #include <utflite/gstr.h>
+ *   #include <gstr.h>
  *
  * Or use the single-header version:
  *   #define GSTR_IMPLEMENTATION
  *   #include "gstr.h"
  */
-
 
 #include <stddef.h>
 #include <stdint.h>
@@ -577,7 +576,6 @@ size_t gstrpad(char *dst, size_t dst_size, const char *src, size_t src_len,
 }
 #endif
 
-
 #endif /* GSTR_SINGLE_H */
 
 #ifdef GSTR_IMPLEMENTATION
@@ -585,9 +583,9 @@ size_t gstrpad(char *dst, size_t dst_size, const char *src, size_t src_len,
 /*
  * gstr.c - Merged UTF-8 and grapheme string library implementation
  *
- * Unicode 17.0 compliant. Combines utf8_* (low-level) and gstr* (high-level) APIs.
+ * Unicode 17.0 compliant. Combines utf8_* (low-level) and gstr* (high-level)
+ * APIs.
  */
-
 
 /* ============================================================================
  * Unicode Width Tables
@@ -729,10 +727,11 @@ static const struct unicode_range ZERO_WIDTH_RANGES[] = {
     {0x1E2EC, 0x1E2EF}, {0x1E4EC, 0x1E4EF}, {0x1E5EE, 0x1E5EF},
     {0x1E6E3, 0x1E6E3}, {0x1E6E6, 0x1E6E6}, {0x1E6EE, 0x1E6EF},
     {0x1E6F5, 0x1E6F5}, {0x1E8D0, 0x1E8D6}, {0x1E944, 0x1E94A},
-    {0x1F3FB, 0x1F3FF},
-    {0xE0001, 0xE0001}, {0xE0020, 0xE007F}, {0xE0100, 0xE01EF},
+    {0x1F3FB, 0x1F3FF}, {0xE0001, 0xE0001}, {0xE0020, 0xE007F},
+    {0xE0100, 0xE01EF},
 };
-#define ZERO_WIDTH_COUNT (sizeof(ZERO_WIDTH_RANGES) / sizeof(ZERO_WIDTH_RANGES[0]))
+#define ZERO_WIDTH_COUNT                                                       \
+  (sizeof(ZERO_WIDTH_RANGES) / sizeof(ZERO_WIDTH_RANGES[0]))
 
 /*
  * Double-width character ranges (Unicode 17.0).
@@ -783,10 +782,9 @@ static const struct unicode_range DOUBLE_WIDTH_RANGES[] = {
     {0x1F02C, 0x1F02F}, {0x1F094, 0x1F09F}, {0x1F0AF, 0x1F0B0},
     {0x1F0C0, 0x1F0C0}, {0x1F0CF, 0x1F0D0}, {0x1F0F6, 0x1F0FF},
     {0x1F170, 0x1F171}, {0x1F17E, 0x1F17F}, {0x1F18E, 0x1F18E},
-    {0x1F191, 0x1F19A}, {0x1F1AE, 0x1F1FF},
-    {0x1F200, 0x1F321}, {0x1F324, 0x1F393}, {0x1F396, 0x1F397},
-    {0x1F399, 0x1F39B}, {0x1F39E, 0x1F3F0}, {0x1F3F3, 0x1F3F5},
-    {0x1F3F7, 0x1F3FA},
+    {0x1F191, 0x1F19A}, {0x1F1AE, 0x1F1FF}, {0x1F200, 0x1F321},
+    {0x1F324, 0x1F393}, {0x1F396, 0x1F397}, {0x1F399, 0x1F39B},
+    {0x1F39E, 0x1F3F0}, {0x1F3F3, 0x1F3F5}, {0x1F3F7, 0x1F3FA},
     {0x1F400, 0x1F4FD}, {0x1F4FF, 0x1F53D}, {0x1F549, 0x1F54E},
     {0x1F550, 0x1F567}, {0x1F56F, 0x1F570}, {0x1F573, 0x1F57A},
     {0x1F587, 0x1F587}, {0x1F58A, 0x1F58D}, {0x1F590, 0x1F590},
@@ -804,13 +802,25 @@ static const struct unicode_range DOUBLE_WIDTH_RANGES[] = {
     {0x1FA6E, 0x1FAFF}, {0x1FC00, 0x1FFFD}, {0x20000, 0x2FFFD},
     {0x30000, 0x3FFFD},
 };
-#define DOUBLE_WIDTH_COUNT (sizeof(DOUBLE_WIDTH_RANGES) / sizeof(DOUBLE_WIDTH_RANGES[0]))
+#define DOUBLE_WIDTH_COUNT                                                     \
+  (sizeof(DOUBLE_WIDTH_RANGES) / sizeof(DOUBLE_WIDTH_RANGES[0]))
 
 /* Grapheme Cluster Break property values from UAX #29. */
 enum gcb_property {
-  GCB_OTHER = 0, GCB_CR, GCB_LF, GCB_CONTROL, GCB_EXTEND, GCB_ZWJ,
-  GCB_REGIONAL_INDICATOR, GCB_PREPEND, GCB_SPACING_MARK,
-  GCB_L, GCB_V, GCB_T, GCB_LV, GCB_LVT
+  GCB_OTHER = 0,
+  GCB_CR,
+  GCB_LF,
+  GCB_CONTROL,
+  GCB_EXTEND,
+  GCB_ZWJ,
+  GCB_REGIONAL_INDICATOR,
+  GCB_PREPEND,
+  GCB_SPACING_MARK,
+  GCB_L,
+  GCB_V,
+  GCB_T,
+  GCB_LV,
+  GCB_LVT
 };
 
 #define HANGUL_SBASE 0xAC00
@@ -1413,7 +1423,8 @@ static const struct unicode_range INCB_CONSONANTS[] = {
     {0x11EE0, 0x11EF2}, {0x11F02, 0x11F02}, {0x11F04, 0x11F10},
     {0x11F12, 0x11F33},
 };
-#define INCB_CONSONANT_COUNT (sizeof(INCB_CONSONANTS) / sizeof(INCB_CONSONANTS[0]))
+#define INCB_CONSONANT_COUNT                                                   \
+  (sizeof(INCB_CONSONANTS) / sizeof(INCB_CONSONANTS[0]))
 
 /* ============================================================================
  * Internal Helpers
@@ -1696,7 +1707,8 @@ int utf8_cpwidth(uint32_t codepoint) {
   if (unicode_range_contains(codepoint, ZERO_WIDTH_RANGES, ZERO_WIDTH_COUNT)) {
     return 0;
   }
-  if (unicode_range_contains(codepoint, DOUBLE_WIDTH_RANGES, DOUBLE_WIDTH_COUNT)) {
+  if (unicode_range_contains(codepoint, DOUBLE_WIDTH_RANGES,
+                             DOUBLE_WIDTH_COUNT)) {
     return 2;
   }
   return 1;
@@ -1716,7 +1728,8 @@ int utf8_is_zerowidth(uint32_t codepoint) {
 }
 
 int utf8_is_wide(uint32_t codepoint) {
-  return unicode_range_contains(codepoint, DOUBLE_WIDTH_RANGES, DOUBLE_WIDTH_COUNT);
+  return unicode_range_contains(codepoint, DOUBLE_WIDTH_RANGES,
+                                DOUBLE_WIDTH_COUNT);
 }
 
 /* ============================================================================
@@ -2251,7 +2264,8 @@ int gstrncasecmp(const char *a, size_t a_len, const char *b, size_t b_len,
  * ============================================================================
  */
 
-int gstrstartswith(const char *s, size_t s_len, const char *prefix, size_t prefix_len) {
+int gstrstartswith(const char *s, size_t s_len, const char *prefix,
+                   size_t prefix_len) {
   if (!s || !prefix)
     return 0;
   if (prefix_len == 0)
@@ -2283,7 +2297,8 @@ int gstrstartswith(const char *s, size_t s_len, const char *prefix, size_t prefi
   return 1;
 }
 
-int gstrendswith(const char *s, size_t s_len, const char *suffix, size_t suffix_len) {
+int gstrendswith(const char *s, size_t s_len, const char *suffix,
+                 size_t suffix_len) {
   if (!s || !suffix)
     return 0;
   if (suffix_len == 0)
@@ -3262,7 +3277,8 @@ size_t gstrupper(char *dst, size_t dst_size, const char *src, size_t src_len) {
  */
 
 size_t gstrellipsis(char *dst, size_t dst_size, const char *src, size_t src_len,
-                    size_t max_graphemes, const char *ellipsis, size_t ellipsis_len) {
+                    size_t max_graphemes, const char *ellipsis,
+                    size_t ellipsis_len) {
   if (!dst || dst_size == 0)
     return 0;
 

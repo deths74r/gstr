@@ -47,7 +47,7 @@ VERSION_FLAGS = -DGSTR_VERSION=\"$(VERSION)\" -DGSTR_BUILD_ID=\"$(BUILD_ID)\"
 # ============================================================================
 GSTR_SRC = $(SRCDIR)/gstr.c
 GSTR_OBJ = $(BUILDDIR)/gstr.o
-GSTR_HEADER = $(INCDIR)/utflite/gstr.h
+GSTR_HEADER = $(INCDIR)/gstr.h
 GSTR_SINGLE = $(SINGLE_HEADER_DIR)/gstr.h
 
 # Library
@@ -109,7 +109,7 @@ $(GSTR_SINGLE): $(GSTR_HEADER) $(GSTR_SRC)
 	@# Include gstr implementation (skip includes - they're in header)
 	@sed -e '/#include <stdlib.h>/d' \
 		-e '/#include <string.h>/d' \
-		-e '/#include <utflite\/gstr.h>/d' $(GSTR_SRC) >> $@
+		-e '/#include <gstr.h>/d' $(GSTR_SRC) >> $@
 	@echo "" >> $@
 	@echo "#endif /* GSTR_IMPLEMENTATION */" >> $@
 	@echo "Generated $(GSTR_SINGLE) ($(VERSION))"
@@ -125,14 +125,11 @@ clean:
 # Install/Uninstall
 # ============================================================================
 install: $(LIB) $(GSTR_HEADER) $(GSTR_SINGLE)
-	install -d $(INCLUDEDIR)/utflite
 	install -d $(LIBDIR)
-	install -m 644 $(GSTR_HEADER) $(INCLUDEDIR)/utflite/gstr.h
 	install -m 644 $(GSTR_SINGLE) $(INCLUDEDIR)/gstr.h
 	install -m 644 $(LIB) $(LIBDIR)/
 
 uninstall:
-	rm -rf $(INCLUDEDIR)/utflite
 	rm -f $(INCLUDEDIR)/gstr.h
 	rm -f $(LIBDIR)/libgstr.a
 
