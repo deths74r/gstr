@@ -1015,20 +1015,3 @@ Yes. All functions are pure (no global state) and only read from their inputs.
 ## License
 
 MIT License. See LICENSE file.
-
-
-## Version History
-
-### v1.6.0 (January 2026)
-- **Major**: Merged UTF-8 and grapheme functionality into unified library
-- Renamed legacy `utflite_*` functions to `utf8_*`
-- Added 10 new functions: `gstrstartswith`, `gstrendswith`, `gstrwidth`, `gstrlower`, `gstrupper`, `gstrellipsis`, `gstrfill`, `gstrlpad`, `gstrrpad`, `gstrpad`
-- Total: 56 functions (14 utf8 + 42 gstr)
-
-### v1.5.3 (January 2026)
-- Added `gstrlen()` (grapheme count) 
-- Improved test coverage
-
-### v1.5.0 (December 2025)
-- UAX #29 grapheme cluster segmentation
-- 100% pass rate on Unicode GraphemeBreakTest.txt
