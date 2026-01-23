@@ -29,6 +29,22 @@ gstrlen("你好", 6);        // Returns 2 ✓
 gstrlen("👨‍👩‍👧", 18);        // Returns 1 ✓
 ```
 
+## gstr.h vs. The Competition
+
+| Feature | gstr.h | libgrapheme | utf8proc | libunistring | ICU |
+|---------|--------|-------------|----------|--------------|-----|
+| **Integration** | `#include` | Build + link | Build + link | Build + link | Build + link |
+| **Files** | 1 | ~15 | ~10 | ~100+ | 1000+ |
+| **Binary size** | 0 (header) | ~30KB | ~300KB | ~2MB | ~38MB |
+| **Unicode version** | 17.0 | 15.0 | 16.0 | 16.0 | 16.0 |
+| **Language** | C99 | C99 | C99 | C99 | C/C++ |
+| **High-level string API** | ✅ | ❌ | ❌ | Partial | ✅ |
+| **Grapheme segmentation** | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **Display width** | ✅ | ❌ | ✅ | ✅ | ✅ |
+| **Terminal-width padding** | ✅ | ❌ | ❌ | ❌ | ❌ |
+| **Dependencies** | None | None | None | libc | libc++ |
+| **Freestanding** | ✅ | ✅ | ❌ | ❌ | ❌ |
+
 ## Quick Start
 
 ### Installation
