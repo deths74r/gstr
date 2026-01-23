@@ -8,3 +8,4 @@ test/test_single
 
 # Sift agent memory (per-project database)
 .sift/
+.zig-cache/
