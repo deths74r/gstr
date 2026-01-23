@@ -1,5 +1,3 @@
-<!-- SPDX-License-Identifier: GPL-2.0-only -->
-
 # C Coding Standards
 
 This document defines the mandatory coding standards for all C projects. All code contributions must follow these rules for consistency, readability, and maintainability.
@@ -174,24 +172,28 @@ char buffer[32];
 - This follows Linux kernel style: wide indentation discourages deep nesting
 - If your code is indented more than 3 levels, consider refactoring
 
-### Brace Style (K&R)
-Opening braces go on the same line as the function signature or control statement.
+### Brace Style (Linux Kernel)
+Function opening braces go on a **separate line**. Control structure braces (if, for, while, switch) go on the **same line**.
 
 ```c
-// Correct
-int main(void) {
+// Correct - function brace on new line
+int main(void)
+{
 	return 0;
 }
 
-void process_data(int count) {
+// Correct - control structures use K&R style (brace on same line)
+void process_data(int count)
+{
 	for (int i = 0; i < count; i++) {
-		// code here
+		if (condition) {
+			// code here
+		}
 	}
 }
 
-// Wrong
-int main(void)
-{
+// Wrong - function brace on same line
+int main(void) {
 	return 0;
 }
 ```
