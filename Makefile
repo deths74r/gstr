@@ -43,24 +43,17 @@ BUILD_ID := $(GIT_HASH)-$(BUILD_TIME)
 VERSION_FLAGS = -DGSTR_VERSION=\"$(VERSION)\" -DGSTR_BUILD_ID=\"$(BUILD_ID)\"
 
 # ============================================================================
-# Files
+# Files (merged library - gstr.h includes utf8_* and gstr* APIs)
 # ============================================================================
-# utflite (core)
-UTFLITE_SRC = $(SRCDIR)/utflite.c
-UTFLITE_OBJ = $(BUILDDIR)/utflite.o
-UTFLITE_HEADER = $(INCDIR)/utflite/utflite.h
-UTFLITE_SINGLE = $(SINGLE_HEADER_DIR)/utflite.h
-
-# gstr (grapheme strings)
 GSTR_SRC = $(SRCDIR)/gstr.c
 GSTR_OBJ = $(BUILDDIR)/gstr.o
 GSTR_HEADER = $(INCDIR)/utflite/gstr.h
 GSTR_SINGLE = $(SINGLE_HEADER_DIR)/gstr.h
 
-# Combined library
-LIB = $(BUILDDIR)/libutflite.a
+# Library
+LIB = $(BUILDDIR)/libgstr.a
 
-.PHONY: all clean install uninstall test test-single test-gstr test-gstr-single debug version
+.PHONY: all clean install uninstall test test-single debug version
 
 all: $(LIB) $(GSTR_SINGLE)
 
@@ -70,22 +63,20 @@ $(BUILDDIR):
 # ============================================================================
 # Library build
 # ============================================================================
-$(LIB): $(UTFLITE_OBJ) $(GSTR_OBJ)
+$(LIB): $(GSTR_OBJ)
 	$(AR) $(ARFLAGS) $@ $^
 
-$(UTFLITE_OBJ): $(UTFLITE_SRC) $(UTFLITE_HEADER) | $(BUILDDIR)
-	$(CC) $(CFLAGS) -I$(INCDIR) -c $< -o $@
-
-$(GSTR_OBJ): $(GSTR_SRC) $(GSTR_HEADER) $(UTFLITE_HEADER) | $(BUILDDIR)
+$(GSTR_OBJ): $(GSTR_SRC) $(GSTR_HEADER) | $(BUILDDIR)
 	$(CC) $(CFLAGS) $(VERSION_FLAGS) -I$(INCDIR) -c $< -o $@
 
 # ============================================================================
 # Single-header generation
 # ============================================================================
-$(GSTR_SINGLE): $(GSTR_HEADER) $(GSTR_SRC) $(UTFLITE_SINGLE)
+$(GSTR_SINGLE): $(GSTR_HEADER) $(GSTR_SRC)
+	@mkdir -p $(SINGLE_HEADER_DIR)
 	@echo "Generating single-header gstr.h..."
 	@echo "/*" > $@
-	@echo " * gstr.h - Single-header grapheme string library" >> $@
+	@echo " * gstr.h - Single-header UTF-8 and grapheme string library" >> $@
 	@echo " * Version: $(VERSION)" >> $@
 	@echo " * Build: $(BUILD_ID)" >> $@
 	@echo " *" >> $@
@@ -105,19 +96,8 @@ $(GSTR_SINGLE): $(GSTR_HEADER) $(GSTR_SRC) $(UTFLITE_SINGLE)
 	@echo "#define GSTR_BUILD_ID \"$(BUILD_ID)\"" >> $@
 	@echo "#endif" >> $@
 	@echo "" >> $@
-	@echo "/* ============================================================================" >> $@
-	@echo " * utflite.h - Core UTF-8 and grapheme support" >> $@
-	@echo " * ============================================================================ */" >> $@
-	@# Include utflite header (skip header guards and includes we'll handle)
-	@sed -n '/#ifndef UTFLITE_H/,/#endif \/\* UTFLITE_H \*\//p' $(UTFLITE_SINGLE) | \
-		sed '1d;$$d' >> $@
-	@echo "" >> $@
-	@echo "/* ============================================================================" >> $@
-	@echo " * gstr.h - Grapheme string operations" >> $@
-	@echo " * ============================================================================ */" >> $@
-	@# Include gstr header (skip include of utflite.h and header guard)
-	@sed -e '/#include "utflite.h"/d' \
-		-e '/#ifndef GSTR_H/d' \
+	@# Include gstr header (skip header guard - we use our own)
+	@sed -e '/#ifndef GSTR_H/d' \
 		-e '/#define GSTR_H/d' \
 		-e '/#endif \/\* GSTR_H \*\//d' \
 		$(GSTR_HEADER) >> $@
@@ -126,67 +106,51 @@ $(GSTR_SINGLE): $(GSTR_HEADER) $(GSTR_SRC) $(UTFLITE_SINGLE)
 	@echo "" >> $@
 	@echo "#ifdef GSTR_IMPLEMENTATION" >> $@
 	@echo "" >> $@
-	@echo "/* ============================================================================" >> $@
-	@echo " * utflite.c - Core implementation" >> $@
-	@echo " * ============================================================================ */" >> $@
-	@# Include utflite implementation (skip include)
-	@sed -e '/#include <utflite\/utflite.h>/d' $(UTFLITE_SRC) >> $@
-	@echo "" >> $@
-	@echo "/* ============================================================================" >> $@
-	@echo " * gstr.c - Grapheme string implementation" >> $@
-	@echo " * ============================================================================ */" >> $@
-	@# Include gstr implementation (skip includes)
-	@sed -e '/#include <utflite\/utflite.h>/d' \
+	@# Include gstr implementation (skip includes - they're in header)
+	@sed -e '/#include <stdlib.h>/d' \
+		-e '/#include <string.h>/d' \
 		-e '/#include <utflite\/gstr.h>/d' $(GSTR_SRC) >> $@
 	@echo "" >> $@
 	@echo "#endif /* GSTR_IMPLEMENTATION */" >> $@
 	@echo "Generated $(GSTR_SINGLE) ($(VERSION))"
 
 # ============================================================================
-# Tests
+# Clean
 # ============================================================================
 clean:
 	rm -rf $(BUILDDIR)
-	rm -f $(TESTDIR)/test_utflite $(TESTDIR)/test_single
 	rm -f $(TESTDIR)/test_gstr $(TESTDIR)/test_gstr_single
 
-install: $(LIB) $(UTFLITE_HEADER) $(GSTR_HEADER) $(UTFLITE_SINGLE) $(GSTR_SINGLE)
+# ============================================================================
+# Install/Uninstall
+# ============================================================================
+install: $(LIB) $(GSTR_HEADER) $(GSTR_SINGLE)
 	install -d $(INCLUDEDIR)/utflite
 	install -d $(LIBDIR)
-	install -m 644 $(UTFLITE_HEADER) $(INCLUDEDIR)/utflite/utflite.h
 	install -m 644 $(GSTR_HEADER) $(INCLUDEDIR)/utflite/gstr.h
-	install -m 644 $(UTFLITE_SINGLE) $(INCLUDEDIR)/utflite_single.h
-	install -m 644 $(GSTR_SINGLE) $(INCLUDEDIR)/gstr_single.h
+	install -m 644 $(GSTR_SINGLE) $(INCLUDEDIR)/gstr.h
 	install -m 644 $(LIB) $(LIBDIR)/
 
 uninstall:
 	rm -rf $(INCLUDEDIR)/utflite
-	rm -f $(INCLUDEDIR)/utflite_single.h
-	rm -f $(INCLUDEDIR)/gstr_single.h
-	rm -f $(LIBDIR)/libutflite.a
+	rm -f $(INCLUDEDIR)/gstr.h
+	rm -f $(LIBDIR)/libgstr.a
 
-# Test utflite using static library
-test: $(LIB) $(TESTDIR)/test_utflite.c
-	$(CC) $(CFLAGS_DEBUG) -I$(INCDIR) $(TESTDIR)/test_utflite.c -L$(BUILDDIR) -lutflite -o $(TESTDIR)/test_utflite
-	./$(TESTDIR)/test_utflite
-
-# Test utflite using single-header version
-test-single: $(TESTDIR)/test_utflite.c $(UTFLITE_SINGLE)
-	$(CC) $(CFLAGS_DEBUG) -DUTFLITE_SINGLE_HEADER -I$(SINGLE_HEADER_DIR) $(TESTDIR)/test_utflite.c -o $(TESTDIR)/test_single
-	./$(TESTDIR)/test_single
-
+# ============================================================================
+# Tests
+# ============================================================================
 # Test gstr using static library
-test-gstr: $(LIB) $(TESTDIR)/test_gstr.c
-	$(CC) $(CFLAGS_DEBUG) $(VERSION_FLAGS) -I$(INCDIR) $(TESTDIR)/test_gstr.c -L$(BUILDDIR) -lutflite -o $(TESTDIR)/test_gstr
+test: $(LIB) $(TESTDIR)/test_gstr.c
+	$(CC) $(CFLAGS_DEBUG) $(VERSION_FLAGS) -I$(INCDIR) $(TESTDIR)/test_gstr.c -L$(BUILDDIR) -lgstr -o $(TESTDIR)/test_gstr
 	./$(TESTDIR)/test_gstr
 
 # Test gstr using single-header version
-test-gstr-single: $(TESTDIR)/test_gstr.c $(GSTR_SINGLE)
+test-single: $(TESTDIR)/test_gstr.c $(GSTR_SINGLE)
 	$(CC) $(CFLAGS_DEBUG) -DGSTR_SINGLE_HEADER -I$(SINGLE_HEADER_DIR) $(TESTDIR)/test_gstr.c -o $(TESTDIR)/test_gstr_single
 	./$(TESTDIR)/test_gstr_single
 
 # Run all tests
-test-all: test test-single test-gstr test-gstr-single
+test-all: test test-single
 	@echo "All tests passed!"
 
 # Debug build

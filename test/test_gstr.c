@@ -1070,6 +1070,265 @@ TEST(gstrreplace_buffer_overflow) {
 }
 
 /* ============================================================================
+ * gstrstartswith/gstrendswith Tests
+ * ============================================================================
+ */
+
+TEST(gstrstartswith_basic) {
+  ASSERT(gstrstartswith("hello world", 11, "hello", 5) == 1);
+  ASSERT(gstrstartswith("hello world", 11, "world", 5) == 0);
+}
+
+TEST(gstrstartswith_emoji) {
+  /* Family emoji + text */
+  char src[32];
+  memcpy(src, FAMILY, FAMILY_LEN);
+  memcpy(src + FAMILY_LEN, " hello", 6);
+  ASSERT(gstrstartswith(src, FAMILY_LEN + 6, FAMILY, FAMILY_LEN) == 1);
+  /* Just the first codepoint should NOT match */
+  ASSERT(gstrstartswith(src, FAMILY_LEN + 6, "\xF0\x9F\x91\xA8", 4) == 0);
+}
+
+TEST(gstrstartswith_empty) {
+  ASSERT(gstrstartswith("hello", 5, "", 0) == 1);
+  ASSERT(gstrstartswith("", 0, "", 0) == 1);
+}
+
+TEST(gstrendswith_basic) {
+  ASSERT(gstrendswith("hello.txt", 9, ".txt", 4) == 1);
+  ASSERT(gstrendswith("hello.txt", 9, ".md", 3) == 0);
+}
+
+TEST(gstrendswith_emoji) {
+  char src[32];
+  memcpy(src, "test", 4);
+  memcpy(src + 4, EMOJI_SIMPLE, EMOJI_SIMPLE_LEN);
+  ASSERT(gstrendswith(src, 4 + EMOJI_SIMPLE_LEN, EMOJI_SIMPLE,
+                      EMOJI_SIMPLE_LEN) == 1);
+}
+
+TEST(gstrendswith_empty) { ASSERT(gstrendswith("hello", 5, "", 0) == 1); }
+
+/* ============================================================================
+ * gstrwidth Tests
+ * ============================================================================
+ */
+
+TEST(gstrwidth_ascii) { ASSERT_EQ_SIZE(gstrwidth("Hello", 5), 5); }
+
+TEST(gstrwidth_cjk) {
+  /* "日本" - 2 wide characters = 4 columns */
+  ASSERT_EQ_SIZE(gstrwidth("\xE6\x97\xA5\xE6\x9C\xAC", 6), 4);
+}
+
+TEST(gstrwidth_emoji) {
+  /* Single emoji should be 2 columns */
+  ASSERT_EQ_SIZE(gstrwidth(EMOJI_SIMPLE, EMOJI_SIMPLE_LEN), 2);
+}
+
+TEST(gstrwidth_combining) {
+  /* "cafe" + combining acute = 4 visible chars (combining mark is 0 width) */
+  ASSERT_EQ_SIZE(gstrwidth(CAFE_DECOMPOSED, CAFE_DECOMPOSED_LEN), 4);
+}
+
+/* ============================================================================
+ * gstrlower/gstrupper Tests
+ * ============================================================================
+ */
+
+TEST(gstrlower_basic) {
+  char buf[32];
+  size_t n = gstrlower(buf, sizeof(buf), "HELLO World", 11);
+  ASSERT_EQ_SIZE(n, 11);
+  ASSERT_STR_EQ(buf, "hello world");
+}
+
+TEST(gstrlower_emoji) {
+  char buf[32];
+  char src[32];
+  memcpy(src, "ABC", 3);
+  memcpy(src + 3, EMOJI_SIMPLE, EMOJI_SIMPLE_LEN);
+  size_t n = gstrlower(buf, sizeof(buf), src, 3 + EMOJI_SIMPLE_LEN);
+  ASSERT_EQ_SIZE(n, 3 + EMOJI_SIMPLE_LEN);
+  ASSERT(memcmp(buf, "abc", 3) == 0);
+  ASSERT(memcmp(buf + 3, EMOJI_SIMPLE, EMOJI_SIMPLE_LEN) == 0);
+}
+
+TEST(gstrupper_basic) {
+  char buf[32];
+  size_t n = gstrupper(buf, sizeof(buf), "Hello World", 11);
+  ASSERT_EQ_SIZE(n, 11);
+  ASSERT_STR_EQ(buf, "HELLO WORLD");
+}
+
+/* ============================================================================
+ * gstrellipsis Tests
+ * ============================================================================
+ */
+
+TEST(gstrellipsis_no_truncate) {
+  char buf[32];
+  size_t n = gstrellipsis(buf, sizeof(buf), "hi", 2, 10, "...", 3);
+  ASSERT_EQ_SIZE(n, 2);
+  ASSERT_STR_EQ(buf, "hi");
+}
+
+TEST(gstrellipsis_truncate) {
+  char buf[32];
+  gstrellipsis(buf, sizeof(buf), "hello world", 11, 8, "...", 3);
+  /* 8 graphemes max: 5 text + 3 ellipsis */
+  ASSERT_STR_EQ(buf, "hello...");
+}
+
+TEST(gstrellipsis_emoji) {
+  char buf[64];
+  char src[32];
+  memcpy(src, EMOJI_SIMPLE, EMOJI_SIMPLE_LEN);
+  memcpy(src + EMOJI_SIMPLE_LEN, EMOJI_SIMPLE, EMOJI_SIMPLE_LEN);
+  memcpy(src + 2 * EMOJI_SIMPLE_LEN, EMOJI_SIMPLE, EMOJI_SIMPLE_LEN);
+  /* 3 emoji, truncate to 2 + ellipsis */
+  size_t n =
+      gstrellipsis(buf, sizeof(buf), src, 3 * EMOJI_SIMPLE_LEN, 3, ".", 1);
+  /* Should be 1 emoji + "." */
+  ASSERT(n > 0);
+}
+
+/* ============================================================================
+ * gstrfill Tests
+ * ============================================================================
+ */
+
+TEST(gstrfill_basic) {
+  char buf[32];
+  size_t n = gstrfill(buf, sizeof(buf), "-", 1, 5);
+  ASSERT_EQ_SIZE(n, 5);
+  ASSERT_STR_EQ(buf, "-----");
+}
+
+TEST(gstrfill_emoji) {
+  char buf[64];
+  size_t n = gstrfill(buf, sizeof(buf), EMOJI_SIMPLE, EMOJI_SIMPLE_LEN, 3);
+  ASSERT_EQ_SIZE(n, 3 * EMOJI_SIMPLE_LEN);
+}
+
+TEST(gstrfill_overflow) {
+  char buf[4];
+  size_t n = gstrfill(buf, sizeof(buf), "ab", 2, 10);
+  /* Can only fit 1 "ab" (2 bytes + null) */
+  ASSERT_EQ_SIZE(n, 2);
+  ASSERT_STR_EQ(buf, "ab");
+}
+
+/* ============================================================================
+ * gstrlpad/gstrrpad/gstrpad Tests
+ * ============================================================================
+ */
+
+TEST(gstrlpad_basic) {
+  char buf[32];
+  size_t n = gstrlpad(buf, sizeof(buf), "hi", 2, 5, " ", 1);
+  ASSERT_EQ_SIZE(n, 5);
+  ASSERT_STR_EQ(buf, "   hi");
+}
+
+TEST(gstrlpad_already_wide) {
+  char buf[32];
+  size_t n = gstrlpad(buf, sizeof(buf), "hello", 5, 3, " ", 1);
+  ASSERT_EQ_SIZE(n, 5);
+  ASSERT_STR_EQ(buf, "hello");
+}
+
+TEST(gstrrpad_basic) {
+  char buf[32];
+  size_t n = gstrrpad(buf, sizeof(buf), "hi", 2, 5, " ", 1);
+  ASSERT_EQ_SIZE(n, 5);
+  ASSERT_STR_EQ(buf, "hi   ");
+}
+
+TEST(gstrpad_basic) {
+  char buf[32];
+  size_t n = gstrpad(buf, sizeof(buf), "hi", 2, 6, " ", 1);
+  /* 6 - 2 = 4 padding, split as 2 left + 2 right */
+  ASSERT_EQ_SIZE(n, 6);
+  ASSERT_STR_EQ(buf, "  hi  ");
+}
+
+TEST(gstrpad_emoji_padding) {
+  char buf[64];
+  size_t n =
+      gstrpad(buf, sizeof(buf), "x", 1, 3, EMOJI_SIMPLE, EMOJI_SIMPLE_LEN);
+  /* 3 graphemes: 1 emoji + "x" + 1 emoji */
+  ASSERT(n > 1);
+}
+
+/* ============================================================================
+ * utf8_* API Tests
+ * ============================================================================
+ */
+
+TEST(utf8_decode_ascii) {
+  uint32_t cp;
+  int bytes = utf8_decode("A", 1, &cp);
+  ASSERT_EQ(bytes, 1);
+  ASSERT_EQ(cp, 'A');
+}
+
+TEST(utf8_decode_multibyte) {
+  uint32_t cp;
+  /* U+00E9 (é) = 0xC3 0xA9 */
+  int bytes = utf8_decode("\xC3\xA9", 2, &cp);
+  ASSERT_EQ(bytes, 2);
+  ASSERT_EQ(cp, 0xE9);
+}
+
+TEST(utf8_encode_ascii) {
+  char buf[4];
+  int bytes = utf8_encode('A', buf);
+  ASSERT_EQ(bytes, 1);
+  ASSERT_EQ(buf[0], 'A');
+}
+
+TEST(utf8_encode_multibyte) {
+  char buf[4];
+  /* U+00E9 (é) */
+  int bytes = utf8_encode(0xE9, buf);
+  ASSERT_EQ(bytes, 2);
+  ASSERT_EQ((unsigned char)buf[0], 0xC3);
+  ASSERT_EQ((unsigned char)buf[1], 0xA9);
+}
+
+TEST(utf8_valid_ok) {
+  int err;
+  ASSERT(utf8_valid("Hello", 5, &err) == 1);
+}
+
+TEST(utf8_valid_bad) {
+  int err;
+  /* Invalid continuation byte */
+  ASSERT(utf8_valid("\xFF\x00", 2, &err) == 0);
+  ASSERT_EQ(err, 0);
+}
+
+TEST(utf8_cpcount_basic) {
+  /* "café" with precomposed é = 5 codepoints */
+  ASSERT_EQ(utf8_cpcount("caf\xC3\xA9", 5), 4);
+}
+
+TEST(utf8_cpwidth_basic) {
+  ASSERT_EQ(utf8_cpwidth('A'), 1);
+  ASSERT_EQ(utf8_cpwidth(0x3042), 2); /* Hiragana 'a' - wide */
+  ASSERT_EQ(utf8_cpwidth(0x0301), 0); /* Combining acute - zero width */
+}
+
+TEST(utf8_truncate_basic) {
+  /* CJK string: "日本語" (each char is 2 columns) */
+  const char *s = "\xE6\x97\xA5\xE6\x9C\xAC\xE8\xAA\x9E";
+  int offset = utf8_truncate(s, 9, 4);
+  /* 4 columns = 2 characters = 6 bytes */
+  ASSERT_EQ(offset, 6);
+}
+
+/* ============================================================================
  * Main
  * ============================================================================
  */
@@ -1242,6 +1501,53 @@ int main(void) {
   RUN(gstrreplace_empty_old);
   RUN(gstrreplace_emoji);
   RUN(gstrreplace_buffer_overflow);
+
+  printf("\ngstrstartswith/gstrendswith Tests:\n");
+  RUN(gstrstartswith_basic);
+  RUN(gstrstartswith_emoji);
+  RUN(gstrstartswith_empty);
+  RUN(gstrendswith_basic);
+  RUN(gstrendswith_emoji);
+  RUN(gstrendswith_empty);
+
+  printf("\ngstrwidth Tests:\n");
+  RUN(gstrwidth_ascii);
+  RUN(gstrwidth_cjk);
+  RUN(gstrwidth_emoji);
+  RUN(gstrwidth_combining);
+
+  printf("\ngstrlower/gstrupper Tests:\n");
+  RUN(gstrlower_basic);
+  RUN(gstrlower_emoji);
+  RUN(gstrupper_basic);
+
+  printf("\ngstrellipsis Tests:\n");
+  RUN(gstrellipsis_no_truncate);
+  RUN(gstrellipsis_truncate);
+  RUN(gstrellipsis_emoji);
+
+  printf("\ngstrfill Tests:\n");
+  RUN(gstrfill_basic);
+  RUN(gstrfill_emoji);
+  RUN(gstrfill_overflow);
+
+  printf("\ngstrlpad/gstrrpad/gstrpad Tests:\n");
+  RUN(gstrlpad_basic);
+  RUN(gstrlpad_already_wide);
+  RUN(gstrrpad_basic);
+  RUN(gstrpad_basic);
+  RUN(gstrpad_emoji_padding);
+
+  printf("\nutf8_* API Tests:\n");
+  RUN(utf8_decode_ascii);
+  RUN(utf8_decode_multibyte);
+  RUN(utf8_encode_ascii);
+  RUN(utf8_encode_multibyte);
+  RUN(utf8_valid_ok);
+  RUN(utf8_valid_bad);
+  RUN(utf8_cpcount_basic);
+  RUN(utf8_cpwidth_basic);
+  RUN(utf8_truncate_basic);
 
   printf("\n----------------------------------------\n");
   printf("Tests passed: %d\n", tests_passed);

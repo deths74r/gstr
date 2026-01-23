@@ -1,7 +1,7 @@
 /*
- * gstr.h - Single-header grapheme string library
+ * gstr.h - Single-header UTF-8 and grapheme string library
  * Version: 1.5.3+gstr-dev
- * Build: a312ed3-20260122-111420
+ * Build: 3bc19f1-20260122-173007
  *
  * Usage:
  *   #define GSTR_IMPLEMENTATION
@@ -16,160 +16,9 @@
 #define GSTR_VERSION "1.5.3+gstr-dev"
 #endif
 #ifndef GSTR_BUILD_ID
-#define GSTR_BUILD_ID "a312ed3-20260122-111420"
+#define GSTR_BUILD_ID "3bc19f1-20260122-173007"
 #endif
 
-/* ============================================================================
- * utflite.h - Core UTF-8 and grapheme support
- * ============================================================================ */
-#define UTFLITE_H
-
-#include <stdint.h>
-
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-/* Library version: major.minor.patch */
-#define UTFLITE_VERSION_MAJOR 1
-#define UTFLITE_VERSION_MINOR 5
-#define UTFLITE_VERSION_PATCH 3
-#define UTFLITE_VERSION_STRING "1.5.3"
-
-#define UTFLITE_UNICODE_VERSION 170 /* Unicode 17.0 */
-
-/* Unicode replacement character (returned on decode errors) */
-#define UTFLITE_REPLACEMENT_CHAR 0xFFFD
-
-/* Maximum bytes needed to encode any Unicode codepoint */
-#define UTFLITE_MAX_BYTES 4
-
-/* ============================================================================
- * Core Encoding/Decoding
- * ============================================================================
- */
-
-/*
- * Decodes UTF-8 bytes into a codepoint. The bytes parameter points to UTF-8
- * data, length specifies available bytes, and codepoint receives the decoded
- * value (U+FFFD on error). Returns bytes consumed (1-4), or 0 for null/empty.
- * Rejects overlong encodings, surrogates, and values above U+10FFFF.
- */
-int utflite_decode(const char *bytes, int length, uint32_t *codepoint);
-
-/*
- * Encodes a codepoint as UTF-8. The codepoint must be 0x0000-0x10FFFF, buffer
- * needs UTFLITE_MAX_BYTES space. Returns bytes written (1-4), or 0 for invalid
- * codepoints. Does not null-terminate.
- */
-int utflite_encode(uint32_t codepoint, char *buffer);
-
-/* ============================================================================
- * Character Width (Display Columns)
- * ============================================================================
- */
-
-/*
- * Returns display width in terminal columns. Control chars return -1, combining
- * marks return 0, normal chars return 1, CJK/emoji return 2.
- */
-int utflite_codepoint_width(uint32_t codepoint);
-
-/*
- * Returns display width of UTF-8 char at offset. Convenience function combining
- * decode and width lookup. Returns 0 for null or invalid offset.
- */
-int utflite_char_width(const char *text, int length, int offset);
-
-/* ============================================================================
- * String Navigation
- * ============================================================================
- */
-
-/*
- * Returns byte offset of next UTF-8 character. Advances past current char.
- * Returns length if at end.
- */
-int utflite_next_char(const char *text, int length, int offset);
-
-/*
- * Returns byte offset where previous UTF-8 character starts. Returns 0 if at
- * beginning.
- */
-int utflite_prev_char(const char *text, int offset);
-
-/* ============================================================================
- * Grapheme Cluster Navigation (UAX #29)
- * ============================================================================
- */
-
-/*
- * Returns byte offset of next grapheme cluster boundary per UAX #29. Handles
- * emoji ZWJ sequences, combining marks, flags, and Hangul.
- */
-int utflite_next_grapheme(const char *text, int length, int offset);
-
-/*
- * Returns byte offset of previous grapheme cluster boundary per UAX #29.
- */
-int utflite_prev_grapheme(const char *text, int offset);
-
-/* ============================================================================
- * Utility Functions
- * ============================================================================
- */
-
-/*
- * Validates UTF-8 encoding. Returns 1 if valid, 0 if invalid. Sets error_offset
- * (if provided) to first error position.
- */
-int utflite_validate(const char *text, int length, int *error_offset);
-
-/*
- * Counts Unicode codepoints (not bytes or graphemes). Returns 0 for null.
- */
-int utflite_codepoint_count(const char *text, int length);
-
-/*
- * Counts grapheme clusters (user-perceived characters) in a UTF-8 string. A
- * grapheme may contain multiple codepoints, such as an emoji with skin tone
- * or a letter with combining accents. Returns 0 for null or empty input.
- */
-int utflite_grapheme_count(const char *text, int length);
-
-/*
- * Calculates total display width in columns. CJK/emoji count as 2, most chars
- * as 1, combining marks as 0. Returns 0 for null.
- */
-int utflite_string_width(const char *text, int length);
-
-/*
- * Checks if codepoint is zero-width (combining marks, format chars, ZWJ).
- * Returns 1 if zero-width, 0 otherwise.
- */
-int utflite_is_zero_width(uint32_t codepoint);
-
-/*
- * Checks if codepoint is double-width (CJK, emoji). Returns 1 if double-width,
- * 0 otherwise.
- */
-int utflite_is_wide(uint32_t codepoint);
-
-/*
- * Finds byte offset to truncate string at max display width. Wide chars
- * exceeding limit are excluded. Returns length if string fits. Returns 0
- * for null.
- */
-int utflite_truncate(const char *text, int length, int max_cols);
-
-#ifdef __cplusplus
-}
-#endif
-
-
-/* ============================================================================
- * gstr.h - Grapheme string operations
- * ============================================================================ */
 /*
  * gstr.h - Grapheme-based string library
  *
@@ -180,6 +29,12 @@ int utflite_truncate(const char *text, int length, int max_cols);
  * Example:
  *   strlen("👨‍👩‍👧")  → 18 (bytes)
  *   gstrlen("👨‍👩‍👧", 18) → 1  (graphemes)
+ *
+ * Naming Convention:
+ *   - utf8_* - Low-level UTF-8 engine (encoding, decoding, validation,
+ * navigation)
+ *   - gstr*  - High-level grapheme string API (string.h equivalents for
+ * graphemes)
  *
  * Design decisions:
  *   - Unit of operation: grapheme cluster (UAX #29)
@@ -198,6 +53,7 @@ int utflite_truncate(const char *text, int length, int max_cols);
 
 
 #include <stddef.h>
+#include <stdint.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -212,7 +68,124 @@ extern "C" {
 #endif
 
 /* ============================================================================
- * Length Functions
+ * Constants
+ * ============================================================================
+ */
+
+/* Unicode replacement character (returned on decode errors) */
+#define UTF8_REPLACEMENT_CHAR 0xFFFD
+
+/* Maximum bytes needed to encode any Unicode codepoint */
+#define UTF8_MAX_BYTES 4
+
+/* ============================================================================
+ * UTF-8 Layer: Encoding/Decoding
+ * ============================================================================
+ */
+
+/*
+ * Decodes UTF-8 bytes into a codepoint. The bytes parameter points to UTF-8
+ * data, length specifies available bytes, and codepoint receives the decoded
+ * value (U+FFFD on error). Returns bytes consumed (1-4), or 0 for null/empty.
+ * Rejects overlong encodings, surrogates, and values above U+10FFFF.
+ */
+int utf8_decode(const char *bytes, int length, uint32_t *codepoint);
+
+/*
+ * Encodes a codepoint as UTF-8. The codepoint must be 0x0000-0x10FFFF, buffer
+ * needs UTF8_MAX_BYTES space. Returns bytes written (1-4), or 0 for invalid
+ * codepoints. Does not null-terminate.
+ */
+int utf8_encode(uint32_t codepoint, char *buffer);
+
+/* ============================================================================
+ * UTF-8 Layer: Validation
+ * ============================================================================
+ */
+
+/*
+ * Validates UTF-8 encoding. Returns 1 if valid, 0 if invalid. Sets error_offset
+ * (if provided) to first error position.
+ */
+int utf8_valid(const char *text, int length, int *error_offset);
+
+/* ============================================================================
+ * UTF-8 Layer: Codepoint Navigation
+ * ============================================================================
+ */
+
+/*
+ * Returns byte offset of next UTF-8 codepoint. Advances past current char.
+ * Returns length if at end.
+ */
+int utf8_next(const char *text, int length, int offset);
+
+/*
+ * Returns byte offset where previous UTF-8 codepoint starts. Returns 0 if at
+ * beginning.
+ */
+int utf8_prev(const char *text, int offset);
+
+/*
+ * Counts Unicode codepoints (not bytes or graphemes). Returns 0 for null.
+ */
+int utf8_cpcount(const char *text, int length);
+
+/* ============================================================================
+ * UTF-8 Layer: Grapheme Navigation
+ * ============================================================================
+ */
+
+/*
+ * Returns byte offset of next grapheme cluster boundary per UAX #29. Handles
+ * emoji ZWJ sequences, combining marks, flags, and Hangul.
+ */
+int utf8_next_grapheme(const char *text, int length, int offset);
+
+/*
+ * Returns byte offset of previous grapheme cluster boundary per UAX #29.
+ */
+int utf8_prev_grapheme(const char *text, int offset);
+
+/* ============================================================================
+ * UTF-8 Layer: Display Width
+ * ============================================================================
+ */
+
+/*
+ * Returns display width of codepoint in terminal columns.
+ * Returns -1 for control chars, 0 for combining marks, 1 for normal, 2 for
+ * wide.
+ */
+int utf8_cpwidth(uint32_t codepoint);
+
+/*
+ * Returns display width of UTF-8 char at offset. Convenience function combining
+ * decode and width lookup. Returns 0 for null or invalid offset.
+ */
+int utf8_charwidth(const char *text, int length, int offset);
+
+/*
+ * Checks if codepoint is zero-width (combining marks, format chars, ZWJ).
+ * Returns 1 if zero-width, 0 otherwise.
+ */
+int utf8_is_zerowidth(uint32_t codepoint);
+
+/*
+ * Checks if codepoint is double-width (CJK, emoji). Returns 1 if double-width,
+ * 0 otherwise.
+ */
+int utf8_is_wide(uint32_t codepoint);
+
+/*
+ * Finds byte offset to truncate string at max display width. Wide chars
+ * exceeding limit are excluded. Returns length if string fits. Returns 0
+ * for null.
+ */
+int utf8_truncate(const char *text, int length, int max_cols);
+
+/* ============================================================================
+ * Grapheme String Layer: Length Functions
  * ============================================================================
  */
 
@@ -230,8 +203,14 @@ size_t gstrlen(const char *s, size_t byte_len);
  */
 size_t gstrnlen(const char *s, size_t byte_len, size_t max_graphemes);
 
+/*
+ * Calculates total display width in columns. CJK/emoji count as 2, most chars
+ * as 1, combining marks as 0. Returns 0 for null.
+ */
+size_t gstrwidth(const char *s, size_t byte_len);
+
 /* ============================================================================
- * Indexing Functions
+ * Grapheme String Layer: Indexing Functions
  * ============================================================================
  */
 
@@ -251,7 +230,7 @@ const char *gstrat(const char *s, size_t byte_len, size_t grapheme_n,
                    size_t *out_len);
 
 /* ============================================================================
- * Comparison Functions
+ * Grapheme String Layer: Comparison Functions
  * ============================================================================
  */
 
@@ -276,8 +255,37 @@ int gstrncmp(const char *a, size_t a_len, const char *b, size_t b_len,
  */
 int gstrcasecmp(const char *a, size_t a_len, const char *b, size_t b_len);
 
+/*
+ * Case-insensitive comparison of first n graphemes (ASCII only).
+ * Non-ASCII characters are compared byte-exact.
+ * Returns <0 if a < b, 0 if equal, >0 if a > b.
+ */
+int gstrncasecmp(const char *a, size_t a_len, const char *b, size_t b_len,
+                 size_t n);
+
 /* ============================================================================
- * Search Functions
+ * Grapheme String Layer: Prefix/Suffix Functions
+ * ============================================================================
+ */
+
+/*
+ * Checks if string starts with prefix.
+ * Comparison is grapheme-by-grapheme.
+ * Returns 1 if yes, 0 if no.
+ */
+int gstrstartswith(const char *s, size_t s_len, const char *prefix,
+                   size_t prefix_len);
+
+/*
+ * Checks if string ends with suffix.
+ * Comparison is grapheme-by-grapheme.
+ * Returns 1 if yes, 0 if no.
+ */
+int gstrendswith(const char *s, size_t s_len, const char *suffix,
+                 size_t suffix_len);
+
+/* ============================================================================
+ * Grapheme String Layer: Search Functions
  * ============================================================================
  */
 
@@ -305,122 +313,6 @@ const char *gstrrchr(const char *s, size_t len, const char *grapheme,
 const char *gstrstr(const char *haystack, size_t h_len, const char *needle,
                     size_t n_len);
 
-/* ============================================================================
- * Span Functions
- * ============================================================================
- */
-
-/*
- * Returns count of leading graphemes that are in accept set.
- * The accept set is a string of graphemes to match.
- */
-size_t gstrspn(const char *s, size_t len, const char *accept, size_t a_len);
-
-/*
- * Returns count of leading graphemes that are NOT in reject set.
- */
-size_t gstrcspn(const char *s, size_t len, const char *reject, size_t r_len);
-
-/*
- * Finds first grapheme in s that is in accept set.
- * Returns pointer to matching grapheme, or NULL if none found.
- */
-const char *gstrpbrk(const char *s, size_t len, const char *accept,
-                     size_t a_len);
-
-/* ============================================================================
- * Extraction Functions
- * ============================================================================
- */
-
-/*
- * Extracts a range of graphemes into dst buffer.
- * Copies graphemes [start_grapheme, start_grapheme + count).
- * Returns bytes written (excluding null terminator).
- * Always null-terminates if dst_size > 0.
- */
-size_t gstrsub(char *dst, size_t dst_size, const char *src, size_t src_len,
-               size_t start_grapheme, size_t count);
-
-/* ============================================================================
- * Copy Functions
- * ============================================================================
- */
-
-/*
- * Copies all graphemes from src to dst.
- * Returns bytes written (excluding null terminator).
- * Always null-terminates if dst_size > 0.
- */
-size_t gstrcpy(char *dst, size_t dst_size, const char *src, size_t src_len);
-
-/*
- * Copies up to n graphemes from src to dst.
- * Returns bytes written (excluding null terminator).
- * Always null-terminates if dst_size > 0.
- */
-size_t gstrncpy(char *dst, size_t dst_size, const char *src, size_t src_len,
-                size_t n);
-
-/* ============================================================================
- * Concatenation Functions
- * ============================================================================
- */
-
-/*
- * Appends src to dst. dst must be null-terminated.
- * Returns total bytes in dst (excluding null terminator).
- * Always null-terminates if dst_size > 0.
- */
-size_t gstrcat(char *dst, size_t dst_size, const char *src, size_t src_len);
-
-/*
- * Appends up to n graphemes from src to dst.
- * Returns total bytes in dst (excluding null terminator).
- * Always null-terminates if dst_size > 0.
- */
-size_t gstrncat(char *dst, size_t dst_size, const char *src, size_t src_len,
-                size_t n);
-
-/* ============================================================================
- * Additional Comparison Functions
- * ============================================================================
- */
-
-/*
- * Case-insensitive comparison of first n graphemes (ASCII only).
- * Non-ASCII characters are compared byte-exact.
- * Returns <0 if a < b, 0 if equal, >0 if a > b.
- */
-int gstrncasecmp(const char *a, size_t a_len, const char *b, size_t b_len,
-                 size_t n);
-
-/* ============================================================================
- * Allocation Functions
- * ============================================================================
- */
-
-/*
- * Allocates and copies entire string.
- * Returns malloc'd buffer containing the string.
- * Caller must free() the returned pointer.
- * Returns NULL on allocation failure or NULL input.
- */
-char *gstrdup(const char *s, size_t len);
-
-/*
- * Allocates and copies first n graphemes.
- * Returns malloc'd buffer containing up to n graphemes.
- * Caller must free() the returned pointer.
- * Returns NULL on allocation failure or NULL input.
- */
-char *gstrndup(const char *s, size_t len, size_t n);
-
-/* ============================================================================
- * Additional Search Functions
- * ============================================================================
- */
-
 /*
  * Finds last occurrence of needle substring in haystack.
  * Both strings are treated as sequences of graphemes.
@@ -445,7 +337,105 @@ const char *gstrcasestr(const char *haystack, size_t h_len, const char *needle,
 size_t gstrcount(const char *s, size_t len, const char *needle, size_t n_len);
 
 /* ============================================================================
- * Tokenization Functions
+ * Grapheme String Layer: Span Functions
+ * ============================================================================
+ */
+
+/*
+ * Returns count of leading graphemes that are in accept set.
+ * The accept set is a string of graphemes to match.
+ */
+size_t gstrspn(const char *s, size_t len, const char *accept, size_t a_len);
+
+/*
+ * Returns count of leading graphemes that are NOT in reject set.
+ */
+size_t gstrcspn(const char *s, size_t len, const char *reject, size_t r_len);
+
+/*
+ * Finds first grapheme in s that is in accept set.
+ * Returns pointer to matching grapheme, or NULL if none found.
+ */
+const char *gstrpbrk(const char *s, size_t len, const char *accept,
+                     size_t a_len);
+
+/* ============================================================================
+ * Grapheme String Layer: Extraction Functions
+ * ============================================================================
+ */
+
+/*
+ * Extracts a range of graphemes into dst buffer.
+ * Copies graphemes [start_grapheme, start_grapheme + count).
+ * Returns bytes written (excluding null terminator).
+ * Always null-terminates if dst_size > 0.
+ */
+size_t gstrsub(char *dst, size_t dst_size, const char *src, size_t src_len,
+               size_t start_grapheme, size_t count);
+
+/* ============================================================================
+ * Grapheme String Layer: Copy Functions
+ * ============================================================================
+ */
+
+/*
+ * Copies all graphemes from src to dst.
+ * Returns bytes written (excluding null terminator).
+ * Always null-terminates if dst_size > 0.
+ */
+size_t gstrcpy(char *dst, size_t dst_size, const char *src, size_t src_len);
+
+/*
+ * Copies up to n graphemes from src to dst.
+ * Returns bytes written (excluding null terminator).
+ * Always null-terminates if dst_size > 0.
+ */
+size_t gstrncpy(char *dst, size_t dst_size, const char *src, size_t src_len,
+                size_t n);
+
+/* ============================================================================
+ * Grapheme String Layer: Concatenation Functions
+ * ============================================================================
+ */
+
+/*
+ * Appends src to dst. dst must be null-terminated.
+ * Returns total bytes in dst (excluding null terminator).
+ * Always null-terminates if dst_size > 0.
+ */
+size_t gstrcat(char *dst, size_t dst_size, const char *src, size_t src_len);
+
+/*
+ * Appends up to n graphemes from src to dst.
+ * Returns total bytes in dst (excluding null terminator).
+ * Always null-terminates if dst_size > 0.
+ */
+size_t gstrncat(char *dst, size_t dst_size, const char *src, size_t src_len,
+                size_t n);
+
+/* ============================================================================
+ * Grapheme String Layer: Allocation Functions
+ * ============================================================================
+ */
+
+/*
+ * Allocates and copies entire string.
+ * Returns malloc'd buffer containing the string.
+ * Caller must free() the returned pointer.
+ * Returns NULL on allocation failure or NULL input.
+ */
+char *gstrdup(const char *s, size_t len);
+
+/*
+ * Allocates and copies first n graphemes.
+ * Returns malloc'd buffer containing up to n graphemes.
+ * Caller must free() the returned pointer.
+ * Returns NULL on allocation failure or NULL input.
+ */
+char *gstrndup(const char *s, size_t len, size_t n);
+
+/* ============================================================================
+ * Grapheme String Layer: Tokenization Functions
  * ============================================================================
  */
 
@@ -459,7 +449,7 @@ const char *gstrsep(const char **stringp, size_t *lenp, const char *delim,
                     size_t d_len, size_t *tok_len);
 
 /* ============================================================================
- * Trimming Functions
+ * Grapheme String Layer: Trimming Functions
  * ============================================================================
  */
 
@@ -485,7 +475,7 @@ size_t gstrrtrim(char *dst, size_t dst_size, const char *src, size_t src_len);
 size_t gstrtrim(char *dst, size_t dst_size, const char *src, size_t src_len);
 
 /* ============================================================================
- * Transformation Functions
+ * Grapheme String Layer: Transformation Functions
  * ============================================================================
  */
 
@@ -506,6 +496,83 @@ size_t gstrreplace(char *dst, size_t dst_size, const char *src, size_t src_len,
                    const char *old, size_t old_len, const char *new_str,
                    size_t new_len);
 
+/* ============================================================================
+ * Grapheme String Layer: Case Conversion Functions
+ * ============================================================================
+ */
+
+/*
+ * Converts ASCII characters to lowercase.
+ * Non-ASCII characters are copied unchanged.
+ * Returns bytes written (excluding null terminator).
+ * Always null-terminates if dst_size > 0.
+ */
+size_t gstrlower(char *dst, size_t dst_size, const char *src, size_t src_len);
+
+/*
+ * Converts ASCII characters to uppercase.
+ * Non-ASCII characters are copied unchanged.
+ * Returns bytes written (excluding null terminator).
+ * Always null-terminates if dst_size > 0.
+ */
+size_t gstrupper(char *dst, size_t dst_size, const char *src, size_t src_len);
+
+/* ============================================================================
+ * Grapheme String Layer: Display/Truncation Functions
+ * ============================================================================
+ */
+
+/*
+ * Truncates to max_graphemes and appends ellipsis.
+ * If string has <= max_graphemes, copies unchanged.
+ * Returns bytes written (excluding null terminator).
+ * Always null-terminates if dst_size > 0.
+ */
+size_t gstrellipsis(char *dst, size_t dst_size, const char *src, size_t src_len,
+                    size_t max_graphemes, const char *ellipsis,
+                    size_t ellipsis_len);
+
+/* ============================================================================
+ * Grapheme String Layer: Fill/Padding Functions
+ * ============================================================================
+ */
+
+/*
+ * Fills buffer with repeated grapheme.
+ * Returns bytes written (excluding null terminator).
+ * Always null-terminates if dst_size > 0.
+ */
+size_t gstrfill(char *dst, size_t dst_size, const char *grapheme, size_t g_len,
+                size_t count);
+
+/*
+ * Pads string to width with grapheme (left padding).
+ * If string >= width graphemes, copies unchanged.
+ * Returns bytes written (excluding null terminator).
+ * Always null-terminates if dst_size > 0.
+ */
+size_t gstrlpad(char *dst, size_t dst_size, const char *src, size_t src_len,
+                size_t width, const char *pad, size_t pad_len);
+
+/*
+ * Pads string to width with grapheme (right padding).
+ * If string >= width graphemes, copies unchanged.
+ * Returns bytes written (excluding null terminator).
+ * Always null-terminates if dst_size > 0.
+ */
+size_t gstrrpad(char *dst, size_t dst_size, const char *src, size_t src_len,
+                size_t width, const char *pad, size_t pad_len);
+
+/*
+ * Pads string to width with grapheme (center padding).
+ * If string >= width graphemes, copies unchanged.
+ * Extra padding goes on the right if width - src_len is odd.
+ * Returns bytes written (excluding null terminator).
+ * Always null-terminates if dst_size > 0.
+ */
+size_t gstrpad(char *dst, size_t dst_size, const char *src, size_t src_len,
+               size_t width, const char *pad, size_t pad_len);
+
 #ifdef __cplusplus
 }
 #endif
@@ -515,13 +582,10 @@ size_t gstrreplace(char *dst, size_t dst_size, const char *src, size_t src_len,
 
 #ifdef GSTR_IMPLEMENTATION
 
-/* ============================================================================
- * utflite.c - Core implementation
- * ============================================================================ */
 /*
- * utflite.c - UTF-8 library implementation
+ * gstr.c - Merged UTF-8 and grapheme string library implementation
  *
- * Unicode 17.0 width tables included.
+ * Unicode 17.0 compliant. Combines utf8_* (low-level) and gstr* (high-level) APIs.
  */
 
 
@@ -531,7 +595,7 @@ size_t gstrreplace(char *dst, size_t dst_size, const char *src, size_t src_len,
  */
 
 /* Range of Unicode codepoints, used for binary search in property tables. */
-struct utflite_unicode_range {
+struct unicode_range {
   uint32_t start;
   uint32_t end;
 };
@@ -539,9 +603,8 @@ struct utflite_unicode_range {
 /*
  * Zero-width character ranges (Unicode 17.0).
  * Mn (Nonspacing Mark), Me (Enclosing Mark), Cf (Format).
- * Sorted by start codepoint for binary search.
  */
-static const struct utflite_unicode_range ZERO_WIDTH_RANGES[] = {
+static const struct unicode_range ZERO_WIDTH_RANGES[] = {
     {0x0300, 0x036F},   {0x0483, 0x0489},   {0x0591, 0x05BD},
     {0x05BF, 0x05BF},   {0x05C1, 0x05C2},   {0x05C4, 0x05C5},
     {0x05C7, 0x05C7},   {0x0600, 0x0605},   {0x0610, 0x061A},
@@ -666,18 +729,16 @@ static const struct utflite_unicode_range ZERO_WIDTH_RANGES[] = {
     {0x1E2EC, 0x1E2EF}, {0x1E4EC, 0x1E4EF}, {0x1E5EE, 0x1E5EF},
     {0x1E6E3, 0x1E6E3}, {0x1E6E6, 0x1E6E6}, {0x1E6EE, 0x1E6EF},
     {0x1E6F5, 0x1E6F5}, {0x1E8D0, 0x1E8D6}, {0x1E944, 0x1E94A},
-    {0x1F3FB, 0x1F3FF}, /* Emoji skin tone modifiers - zero-width */
+    {0x1F3FB, 0x1F3FF},
     {0xE0001, 0xE0001}, {0xE0020, 0xE007F}, {0xE0100, 0xE01EF},
 };
-#define ZERO_WIDTH_COUNT                                                       \
-  (sizeof(ZERO_WIDTH_RANGES) / sizeof(ZERO_WIDTH_RANGES[0]))
+#define ZERO_WIDTH_COUNT (sizeof(ZERO_WIDTH_RANGES) / sizeof(ZERO_WIDTH_RANGES[0]))
 
 /*
  * Double-width character ranges (Unicode 17.0).
  * W/F from EastAsianWidth + Extended_Pictographic emoji.
- * Sorted by start codepoint for binary search.
  */
-static const struct utflite_unicode_range DOUBLE_WIDTH_RANGES[] = {
+static const struct unicode_range DOUBLE_WIDTH_RANGES[] = {
     {0x00A9, 0x00A9},   {0x00AE, 0x00AE},   {0x1100, 0x115F},
     {0x203C, 0x203C},   {0x2049, 0x2049},   {0x2122, 0x2122},
     {0x2139, 0x2139},   {0x2194, 0x2199},   {0x21A9, 0x21AA},
@@ -722,12 +783,10 @@ static const struct utflite_unicode_range DOUBLE_WIDTH_RANGES[] = {
     {0x1F02C, 0x1F02F}, {0x1F094, 0x1F09F}, {0x1F0AF, 0x1F0B0},
     {0x1F0C0, 0x1F0C0}, {0x1F0CF, 0x1F0D0}, {0x1F0F6, 0x1F0FF},
     {0x1F170, 0x1F171}, {0x1F17E, 0x1F17F}, {0x1F18E, 0x1F18E},
-    {0x1F191, 0x1F19A}, {0x1F1AE, 0x1F1FF}, /* Includes Regional Indicators
-                                               U+1F1E6-U+1F1FF */
+    {0x1F191, 0x1F19A}, {0x1F1AE, 0x1F1FF},
     {0x1F200, 0x1F321}, {0x1F324, 0x1F393}, {0x1F396, 0x1F397},
     {0x1F399, 0x1F39B}, {0x1F39E, 0x1F3F0}, {0x1F3F3, 0x1F3F5},
-    {0x1F3F7, 0x1F3FA}, /* Split: excludes skin tone modifiers U+1F3FB-U+1F3FF
-                         */
+    {0x1F3F7, 0x1F3FA},
     {0x1F400, 0x1F4FD}, {0x1F4FF, 0x1F53D}, {0x1F549, 0x1F54E},
     {0x1F550, 0x1F567}, {0x1F56F, 0x1F570}, {0x1F573, 0x1F57A},
     {0x1F587, 0x1F587}, {0x1F58A, 0x1F58D}, {0x1F590, 0x1F590},
@@ -745,41 +804,20 @@ static const struct utflite_unicode_range DOUBLE_WIDTH_RANGES[] = {
     {0x1FA6E, 0x1FAFF}, {0x1FC00, 0x1FFFD}, {0x20000, 0x2FFFD},
     {0x30000, 0x3FFFD},
 };
-#define DOUBLE_WIDTH_COUNT                                                     \
-  (sizeof(DOUBLE_WIDTH_RANGES) / sizeof(DOUBLE_WIDTH_RANGES[0]))
-
-/* ============================================================================
- * Grapheme Cluster Break Properties (Unicode 17.0, UAX #29)
- * ============================================================================
- */
+#define DOUBLE_WIDTH_COUNT (sizeof(DOUBLE_WIDTH_RANGES) / sizeof(DOUBLE_WIDTH_RANGES[0]))
 
 /* Grapheme Cluster Break property values from UAX #29. */
 enum gcb_property {
-  GCB_OTHER = 0,
-  GCB_CR,
-  GCB_LF,
-  GCB_CONTROL,
-  GCB_EXTEND,
-  GCB_ZWJ,
-  GCB_REGIONAL_INDICATOR,
-  GCB_PREPEND,
-  GCB_SPACING_MARK,
-  GCB_L,
-  GCB_V,
-  GCB_T,
-  GCB_LV,
-  GCB_LVT
+  GCB_OTHER = 0, GCB_CR, GCB_LF, GCB_CONTROL, GCB_EXTEND, GCB_ZWJ,
+  GCB_REGIONAL_INDICATOR, GCB_PREPEND, GCB_SPACING_MARK,
+  GCB_L, GCB_V, GCB_T, GCB_LV, GCB_LVT
 };
 
-/* Hangul syllable constants for LV/LVT computation (Unicode 3.0) */
-#define HANGUL_SBASE 0xAC00 /* First Hangul syllable */
-#define HANGUL_SEND 0xD7A3  /* Last Hangul syllable */
-#define HANGUL_TCOUNT 28    /* Number of trailing jamo per syllable */
-
-/* Maximum codepoints to scan backward for grapheme boundary */
+#define HANGUL_SBASE 0xAC00
+#define HANGUL_SEND 0xD7A3
+#define HANGUL_TCOUNT 28
 #define GRAPHEME_MAX_BACKTRACK 128
 
-/* A range of codepoints with an associated GCB property. */
 struct gcb_range {
   uint32_t start;
   uint32_t end;
@@ -1324,7 +1362,7 @@ static const uint32_t INCB_LINKERS[] = {
 #define INCB_LINKER_COUNT (sizeof(INCB_LINKERS) / sizeof(INCB_LINKERS[0]))
 
 /* InCB Consonant ranges */
-static const struct utflite_unicode_range INCB_CONSONANTS[] = {
+static const struct unicode_range INCB_CONSONANTS[] = {
     {0x0915, 0x0939},   {0x0958, 0x095F},   {0x0978, 0x097F},
     {0x0995, 0x09A8},   {0x09AA, 0x09B0},   {0x09B2, 0x09B2},
     {0x09B6, 0x09B9},   {0x09DC, 0x09DD},   {0x09DF, 0x09E1},
@@ -1375,8 +1413,7 @@ static const struct utflite_unicode_range INCB_CONSONANTS[] = {
     {0x11EE0, 0x11EF2}, {0x11F02, 0x11F02}, {0x11F04, 0x11F10},
     {0x11F12, 0x11F33},
 };
-#define INCB_CONSONANT_COUNT                                                   \
-  (sizeof(INCB_CONSONANTS) / sizeof(INCB_CONSONANTS[0]))
+#define INCB_CONSONANT_COUNT (sizeof(INCB_CONSONANTS) / sizeof(INCB_CONSONANTS[0]))
 
 /* ============================================================================
  * Internal Helpers
@@ -1385,13 +1422,10 @@ static const struct utflite_unicode_range INCB_CONSONANTS[] = {
 
 /*
  * Checks whether a Unicode codepoint falls within any of the given ranges
- * using binary search. The ranges array must be sorted by start codepoint
- * in ascending order. Returns 1 if the codepoint is found within any range,
- * 0 otherwise. This is the core lookup function used by width and property
- * tables throughout the library.
+ * using binary search.
  */
 static int unicode_range_contains(uint32_t codepoint,
-                                  const struct utflite_unicode_range *ranges,
+                                  const struct unicode_range *ranges,
                                   int count) {
   int low = 0;
   int high = count - 1;
@@ -1409,13 +1443,7 @@ static int unicode_range_contains(uint32_t codepoint,
 }
 
 /*
- * Determines the Grapheme Cluster Break (GCB) property for a codepoint,
- * as defined by Unicode UAX #29. This property controls how characters
- * cluster together when determining grapheme boundaries (what users perceive
- * as a single "character"). Hangul syllables are computed algorithmically
- * to save table space, while other properties use binary search in the
- * precomputed GCB_RANGES table. Returns GCB_OTHER for codepoints not found
- * in the table.
+ * Determines the Grapheme Cluster Break (GCB) property for a codepoint.
  */
 static enum gcb_property get_gcb(uint32_t cp) {
   /* Hangul syllables: LV and LVT are computed algorithmically */
@@ -1440,15 +1468,7 @@ static enum gcb_property get_gcb(uint32_t cp) {
 }
 
 /*
- * Checks if a codepoint is an "Extended Pictographic" character, which are
- * emoji and emoji-like symbols that can participate in ZWJ (Zero Width Joiner)
- * sequences. For example, the "family" emoji is formed by joining multiple
- * person emojis with ZWJ characters. This check is used by grapheme break
- * rule GB11 to keep such sequences as a single grapheme cluster.
- *
- * Implementation note: Uses the double-width table as an approximation for
- * Extended_Pictographic. This works correctly for all 766 official Unicode
- * GraphemeBreakTest.txt test cases.
+ * Checks if a codepoint is an "Extended Pictographic" character.
  */
 static int is_extended_pictographic(uint32_t cp) {
   return unicode_range_contains(cp, DOUBLE_WIDTH_RANGES, DOUBLE_WIDTH_COUNT);
@@ -1456,10 +1476,6 @@ static int is_extended_pictographic(uint32_t cp) {
 
 /*
  * Checks if a codepoint is an Indic Conjunct Break (InCB) Linker character.
- * These are special combining marks in Indic scripts (like Devanagari virama)
- * that join consonants together to form conjunct clusters. When a linker
- * appears between consonants, the entire sequence should be treated as a
- * single grapheme (rule GB9c). Uses binary search in the INCB_LINKERS array.
  */
 static int is_incb_linker(uint32_t cp) {
   int low = 0;
@@ -1478,10 +1494,7 @@ static int is_incb_linker(uint32_t cp) {
 }
 
 /*
- * Checks if a codepoint is an Indic Conjunct Break (InCB) Consonant. These
- * are consonant characters in Indic scripts that can form conjunct clusters
- * when joined by linker characters (like virama). Used by grapheme break
- * rule GB9c to properly segment Indic text.
+ * Checks if a codepoint is an Indic Conjunct Break (InCB) Consonant.
  */
 static int is_incb_consonant(uint32_t cp) {
   return unicode_range_contains(cp, INCB_CONSONANTS, INCB_CONSONANT_COUNT);
@@ -1489,10 +1502,7 @@ static int is_incb_consonant(uint32_t cp) {
 
 /*
  * Determine if there's a grapheme cluster break between two codepoints.
- * Implements UAX #29 extended grapheme cluster rules (GB3-GB13, GB999).
- *
- * incb_state: 0 = not in sequence, 1 = seen Consonant, 2 = seen
- * Consonant+Linker
+ * Implements UAX #29 extended grapheme cluster rules.
  */
 static int is_grapheme_break(enum gcb_property prev_prop,
                              enum gcb_property curr_prop, int ri_count,
@@ -1545,8 +1555,7 @@ static int is_grapheme_break(enum gcb_property prev_prop,
     return 0;
   }
 
-  /* GB9c: Indic conjunct sequences - don't break before Consonant
-   * if we've seen Consonant + [Extend|Linker]* + Linker */
+  /* GB9c: Indic conjunct sequences */
   if (incb_state == 2 && is_incb_consonant(curr_cp)) {
     return 0;
   }
@@ -1560,7 +1569,6 @@ static int is_grapheme_break(enum gcb_property prev_prop,
   /* GB12/GB13: RI × RI (only for pairs) */
   if (prev_prop == GCB_REGIONAL_INDICATOR &&
       curr_prop == GCB_REGIONAL_INDICATOR) {
-    /* Break if we've already seen an even number of RIs */
     return (ri_count % 2) == 0;
   }
 
@@ -1569,14 +1577,14 @@ static int is_grapheme_break(enum gcb_property prev_prop,
 }
 
 /* ============================================================================
- * Core Encoding/Decoding
+ * UTF-8 Layer: Core Encoding/Decoding
  * ============================================================================
  */
 
-int utflite_decode(const char *bytes, int length, uint32_t *codepoint) {
+int utf8_decode(const char *bytes, int length, uint32_t *codepoint) {
   if (length <= 0 || !bytes) {
-    *codepoint = UTFLITE_REPLACEMENT_CHAR;
-    return 0; /* EOF/empty: no bytes to consume */
+    *codepoint = UTF8_REPLACEMENT_CHAR;
+    return 0;
   }
   unsigned char first = (unsigned char)bytes[0];
   /* ASCII fast path: single byte (0xxxxxxx) */
@@ -1588,33 +1596,26 @@ int utflite_decode(const char *bytes, int length, uint32_t *codepoint) {
   int sequence_length;
   uint32_t cp;
   if ((first & 0xE0) == 0xC0) {
-    /* Two-byte sequence: 110xxxxx 10xxxxxx */
     sequence_length = 2;
     cp = first & 0x1F;
   } else if ((first & 0xF0) == 0xE0) {
-    /* Three-byte sequence: 1110xxxx 10xxxxxx 10xxxxxx */
     sequence_length = 3;
     cp = first & 0x0F;
   } else if ((first & 0xF8) == 0xF0) {
-    /* Four-byte sequence: 11110xxx 10xxxxxx 10xxxxxx 10xxxxxx */
     sequence_length = 4;
     cp = first & 0x07;
   } else {
-    /* Invalid first byte (continuation byte or invalid) */
-    *codepoint = UTFLITE_REPLACEMENT_CHAR;
+    *codepoint = UTF8_REPLACEMENT_CHAR;
     return 1;
   }
-  /* Check if we have enough bytes */
   if (length < sequence_length) {
-    *codepoint = UTFLITE_REPLACEMENT_CHAR;
+    *codepoint = UTF8_REPLACEMENT_CHAR;
     return 1;
   }
-  /* Read continuation bytes */
   for (int i = 1; i < sequence_length; i++) {
     unsigned char byte = (unsigned char)bytes[i];
     if ((byte & 0xC0) != 0x80) {
-      /* Invalid continuation byte */
-      *codepoint = UTFLITE_REPLACEMENT_CHAR;
+      *codepoint = UTF8_REPLACEMENT_CHAR;
       return 1;
     }
     cp = (cp << 6) | (byte & 0x3F);
@@ -1623,39 +1624,35 @@ int utflite_decode(const char *bytes, int length, uint32_t *codepoint) {
   if ((sequence_length == 2 && cp < 0x80) ||
       (sequence_length == 3 && cp < 0x800) ||
       (sequence_length == 4 && cp < 0x10000)) {
-    *codepoint = UTFLITE_REPLACEMENT_CHAR;
+    *codepoint = UTF8_REPLACEMENT_CHAR;
     return sequence_length;
   }
   /* Check for surrogate pairs (invalid in UTF-8) */
   if (cp >= 0xD800 && cp <= 0xDFFF) {
-    *codepoint = UTFLITE_REPLACEMENT_CHAR;
+    *codepoint = UTF8_REPLACEMENT_CHAR;
     return sequence_length;
   }
   /* Check for values beyond Unicode range */
   if (cp > 0x10FFFF) {
-    *codepoint = UTFLITE_REPLACEMENT_CHAR;
+    *codepoint = UTF8_REPLACEMENT_CHAR;
     return sequence_length;
   }
   *codepoint = cp;
   return sequence_length;
 }
 
-int utflite_encode(uint32_t codepoint, char *buffer) {
+int utf8_encode(uint32_t codepoint, char *buffer) {
   if (!buffer) {
     return 0;
   }
   if (codepoint < 0x80) {
-    /* Single byte: 0xxxxxxx */
     buffer[0] = (char)codepoint;
     return 1;
   } else if (codepoint < 0x800) {
-    /* Two bytes: 110xxxxx 10xxxxxx */
     buffer[0] = (char)(0xC0 | (codepoint >> 6));
     buffer[1] = (char)(0x80 | (codepoint & 0x3F));
     return 2;
   } else if (codepoint < 0x10000) {
-    /* Three bytes: 1110xxxx 10xxxxxx 10xxxxxx */
-    /* Check for surrogate pairs (invalid) */
     if (codepoint >= 0xD800 && codepoint <= 0xDFFF) {
       return 0;
     }
@@ -1664,84 +1661,80 @@ int utflite_encode(uint32_t codepoint, char *buffer) {
     buffer[2] = (char)(0x80 | (codepoint & 0x3F));
     return 3;
   } else if (codepoint <= 0x10FFFF) {
-    /* Four bytes: 11110xxx 10xxxxxx 10xxxxxx 10xxxxxx */
     buffer[0] = (char)(0xF0 | (codepoint >> 18));
     buffer[1] = (char)(0x80 | ((codepoint >> 12) & 0x3F));
     buffer[2] = (char)(0x80 | ((codepoint >> 6) & 0x3F));
     buffer[3] = (char)(0x80 | (codepoint & 0x3F));
     return 4;
   }
-  /* Invalid codepoint */
   return 0;
 }
 
 /* ============================================================================
- * Character Width
+ * UTF-8 Layer: Character Width
  * ============================================================================
  */
 
-int utflite_codepoint_width(uint32_t codepoint) {
-  /* Handle ASCII range with fast path */
+int utf8_cpwidth(uint32_t codepoint) {
   if (codepoint < 0x20) {
-    /* C0 control characters: treat as non-printable */
     if (codepoint == 0x00)
-      return 0; /* NUL */
+      return 0;
     return -1;
   }
   if (codepoint < 0x7F) {
-    /* Printable ASCII */
     return 1;
   }
   if (codepoint == 0x7F) {
-    /* DEL control character */
     return -1;
   }
   if (codepoint < 0xA0) {
-    /* C1 control characters */
     return -1;
   }
-  /* Soft hyphen: often rendered as zero-width */
   if (codepoint == 0x00AD) {
-    return 1; /* But we treat as 1 for editing purposes */
+    return 1;
   }
-  /* Check zero-width ranges (combining marks, format chars, etc.) */
   if (unicode_range_contains(codepoint, ZERO_WIDTH_RANGES, ZERO_WIDTH_COUNT)) {
     return 0;
   }
-  /* Check double-width ranges (CJK, fullwidth, emoji) */
-  if (unicode_range_contains(codepoint, DOUBLE_WIDTH_RANGES,
-                             DOUBLE_WIDTH_COUNT)) {
+  if (unicode_range_contains(codepoint, DOUBLE_WIDTH_RANGES, DOUBLE_WIDTH_COUNT)) {
     return 2;
   }
-  /* Default: normal width */
   return 1;
 }
 
-int utflite_char_width(const char *text, int length, int offset) {
+int utf8_charwidth(const char *text, int length, int offset) {
   if (!text || offset >= length) {
     return 0;
   }
   uint32_t codepoint;
-  utflite_decode(text + offset, length - offset, &codepoint);
-  return utflite_codepoint_width(codepoint);
+  utf8_decode(text + offset, length - offset, &codepoint);
+  return utf8_cpwidth(codepoint);
+}
+
+int utf8_is_zerowidth(uint32_t codepoint) {
+  return unicode_range_contains(codepoint, ZERO_WIDTH_RANGES, ZERO_WIDTH_COUNT);
+}
+
+int utf8_is_wide(uint32_t codepoint) {
+  return unicode_range_contains(codepoint, DOUBLE_WIDTH_RANGES, DOUBLE_WIDTH_COUNT);
 }
 
 /* ============================================================================
- * String Navigation
+ * UTF-8 Layer: String Navigation
  * ============================================================================
  */
 
-int utflite_next_char(const char *text, int length, int offset) {
+int utf8_next(const char *text, int length, int offset) {
   if (!text || offset >= length) {
     return length;
   }
   uint32_t codepoint;
-  int char_bytes = utflite_decode(text + offset, length - offset, &codepoint);
+  int char_bytes = utf8_decode(text + offset, length - offset, &codepoint);
   int next_offset = offset + char_bytes;
   return (next_offset > length) ? length : next_offset;
 }
 
-int utflite_prev_char(const char *text, int offset) {
+int utf8_prev(const char *text, int offset) {
   if (!text || offset <= 0) {
     return 0;
   }
@@ -1754,18 +1747,17 @@ int utflite_prev_char(const char *text, int offset) {
 }
 
 /* ============================================================================
- * Grapheme Cluster Navigation (UAX #29)
+ * UTF-8 Layer: Grapheme Cluster Navigation (UAX #29)
  * ============================================================================
  */
 
-int utflite_next_grapheme(const char *text, int length, int offset) {
+int utf8_next_grapheme(const char *text, int length, int offset) {
   if (!text || offset >= length || offset < 0) {
     return length;
   }
 
-  /* Decode first codepoint */
   uint32_t prev_cp;
-  int bytes = utflite_decode(text + offset, length - offset, &prev_cp);
+  int bytes = utf8_decode(text + offset, length - offset, &prev_cp);
   int next_offset = offset + bytes;
 
   if (next_offset >= length) {
@@ -1775,37 +1767,30 @@ int utflite_next_grapheme(const char *text, int length, int offset) {
   enum gcb_property prev_prop = get_gcb(prev_cp);
   int ri_count = (prev_prop == GCB_REGIONAL_INDICATOR) ? 1 : 0;
   int in_ext_pict = is_extended_pictographic(prev_cp);
-
-  /* InCB state for GB9c: 0=none, 1=seen Consonant, 2=seen Consonant+Linker */
   int incb_state = is_incb_consonant(prev_cp) ? 1 : 0;
 
-  /* Loop through following characters */
   while (next_offset < length) {
     uint32_t curr_cp;
-    bytes = utflite_decode(text + next_offset, length - next_offset, &curr_cp);
+    bytes = utf8_decode(text + next_offset, length - next_offset, &curr_cp);
     enum gcb_property curr_prop = get_gcb(curr_cp);
 
-    /* Check for break */
     if (is_grapheme_break(prev_prop, curr_prop, ri_count, in_ext_pict, curr_cp,
                           incb_state)) {
       return next_offset;
     }
 
-    /* Update state for next iteration */
     if (curr_prop == GCB_REGIONAL_INDICATOR) {
       ri_count++;
     } else if (curr_prop != GCB_EXTEND && curr_prop != GCB_ZWJ) {
       ri_count = 0;
     }
 
-    /* Track ExtPict sequence for GB11 */
     if (is_extended_pictographic(curr_cp)) {
       in_ext_pict = 1;
     } else if (curr_prop != GCB_EXTEND && curr_prop != GCB_ZWJ) {
       in_ext_pict = 0;
     }
 
-    /* Track InCB state for GB9c */
     if (is_incb_consonant(curr_cp)) {
       incb_state = 1;
     } else if (is_incb_linker(curr_cp) && incb_state >= 1) {
@@ -1813,7 +1798,6 @@ int utflite_next_grapheme(const char *text, int length, int offset) {
     } else if (curr_prop != GCB_EXTEND && curr_prop != GCB_ZWJ) {
       incb_state = 0;
     }
-    /* else: Extend/ZWJ keeps the current incb_state */
 
     prev_cp = curr_cp;
     prev_prop = curr_prop;
@@ -1823,51 +1807,31 @@ int utflite_next_grapheme(const char *text, int length, int offset) {
   return length;
 }
 
-/*
- * Returns byte offset of previous grapheme cluster boundary.
- *
- * Implementation notes:
- * - UAX #29 grapheme break rules are defined for forward iteration only,
- *   so this function backtracks up to GRAPHEME_MAX_BACKTRACK codepoints
- *   and then scans forward to find boundaries.
- * - Time complexity: O(k) where k is bounded by GRAPHEME_MAX_BACKTRACK
- *   (128 codepoints). In practice, k is the length of the current grapheme
- *   cluster, typically 1-20 codepoints for even complex emoji sequences.
- * - This approach trades some performance for correctness, avoiding the
- *   complexity of implementing reverse-direction break rules.
- */
-int utflite_prev_grapheme(const char *text, int offset) {
+int utf8_prev_grapheme(const char *text, int offset) {
   if (!text || offset <= 0) {
     return 0;
   }
 
-  /* Find the start of the previous codepoint */
-  int prev_start = utflite_prev_char(text, offset);
+  int prev_start = utf8_prev(text, offset);
   if (prev_start == 0 && offset > 0) {
-    /* We're at the start after moving back one char */
     return 0;
   }
 
-  /*
-   * Strategy: scan forward from a safe point to find grapheme boundaries,
-   * then return the last one before 'offset'.
-   */
   int scan_start = prev_start;
   int remaining = GRAPHEME_MAX_BACKTRACK;
   while (remaining > 0 && scan_start > 0) {
-    int prev = utflite_prev_char(text, scan_start);
+    int prev = utf8_prev(text, scan_start);
     if (prev == scan_start)
       break;
     scan_start = prev;
     remaining--;
   }
 
-  /* Scan forward from scan_start, tracking grapheme boundaries */
   int curr = scan_start;
   int grapheme_start = scan_start;
 
   while (curr < offset) {
-    int next = utflite_next_grapheme(text, offset, curr);
+    int next = utf8_next_grapheme(text, offset, curr);
     if (next >= offset) {
       break;
     }
@@ -1879,11 +1843,11 @@ int utflite_prev_grapheme(const char *text, int offset) {
 }
 
 /* ============================================================================
- * Utility Functions
+ * UTF-8 Layer: Utility Functions
  * ============================================================================
  */
 
-int utflite_validate(const char *text, int length, int *error_offset) {
+int utf8_valid(const char *text, int length, int *error_offset) {
   if (!text) {
     if (error_offset) {
       *error_offset = 0;
@@ -1893,14 +1857,12 @@ int utflite_validate(const char *text, int length, int *error_offset) {
   int offset = 0;
   while (offset < length) {
     uint32_t codepoint;
-    int bytes = utflite_decode(text + offset, length - offset, &codepoint);
-    if (codepoint == UTFLITE_REPLACEMENT_CHAR) {
-      /* Check if it's actually the replacement char or an error */
+    int bytes = utf8_decode(text + offset, length - offset, &codepoint);
+    if (codepoint == UTF8_REPLACEMENT_CHAR) {
       unsigned char first = (unsigned char)text[offset];
       if (first != 0xEF || length - offset < 3 ||
           (unsigned char)text[offset + 1] != 0xBF ||
           (unsigned char)text[offset + 2] != 0xBD) {
-        /* It's an error, not the actual replacement char */
         if (error_offset) {
           *error_offset = offset;
         }
@@ -1912,57 +1874,20 @@ int utflite_validate(const char *text, int length, int *error_offset) {
   return 1;
 }
 
-int utflite_codepoint_count(const char *text, int length) {
+int utf8_cpcount(const char *text, int length) {
   if (!text) {
     return 0;
   }
   int count = 0;
   int offset = 0;
   while (offset < length) {
-    offset = utflite_next_char(text, length, offset);
-    count++;
-  }
-  return count;
-}
-int utflite_grapheme_count(const char *text, int length) {
-  if (!text || length <= 0) {
-    return 0;
-  }
-  int count = 0;
-  int offset = 0;
-  while (offset < length) {
-    offset = utflite_next_grapheme(text, length, offset);
+    offset = utf8_next(text, length, offset);
     count++;
   }
   return count;
 }
 
-int utflite_string_width(const char *text, int length) {
-  if (!text) {
-    return 0;
-  }
-  int width = 0;
-  int offset = 0;
-  while (offset < length) {
-    int char_width = utflite_char_width(text, length, offset);
-    if (char_width > 0) {
-      width += char_width;
-    }
-    offset = utflite_next_char(text, length, offset);
-  }
-  return width;
-}
-
-int utflite_is_zero_width(uint32_t codepoint) {
-  return unicode_range_contains(codepoint, ZERO_WIDTH_RANGES, ZERO_WIDTH_COUNT);
-}
-
-int utflite_is_wide(uint32_t codepoint) {
-  return unicode_range_contains(codepoint, DOUBLE_WIDTH_RANGES,
-                                DOUBLE_WIDTH_COUNT);
-}
-
-int utflite_truncate(const char *text, int length, int max_cols) {
+int utf8_truncate(const char *text, int length, int max_cols) {
   if (!text) {
     return 0;
   }
@@ -1970,39 +1895,25 @@ int utflite_truncate(const char *text, int length, int max_cols) {
   int offset = 0;
 
   while (offset < length) {
-    int char_width = utflite_char_width(text, length, offset);
+    int char_width = utf8_charwidth(text, length, offset);
     if (char_width > 0) {
       if (width + char_width > max_cols) {
         return offset;
       }
       width += char_width;
     }
-    offset = utflite_next_char(text, length, offset);
+    offset = utf8_next(text, length, offset);
   }
   return length;
 }
 
 /* ============================================================================
- * gstr.c - Grapheme string implementation
- * ============================================================================ */
-/*
- * gstr.c - Grapheme string library implementation
- *
- * Builds on utflite's grapheme iteration to provide string.h-like operations
- * that work on grapheme clusters instead of bytes.
- */
-
-#include <stdlib.h>
-#include <string.h>
-
-/* ============================================================================
- * Internal Helpers
+ * Grapheme String Layer: Internal Helpers
  * ============================================================================
  */
 
 /*
  * Compares a single grapheme at position a with grapheme at position b.
- * Returns <0, 0, or >0 like memcmp.
  */
 static int gstr_cmp_grapheme(const char *a, size_t a_len, const char *b,
                              size_t b_len) {
@@ -2010,7 +1921,6 @@ static int gstr_cmp_grapheme(const char *a, size_t a_len, const char *b,
   int result = memcmp(a, b, min_len);
   if (result != 0)
     return result;
-  /* Same prefix, shorter string is "less" */
   if (a_len < b_len)
     return -1;
   if (a_len > b_len)
@@ -2024,6 +1934,15 @@ static int gstr_cmp_grapheme(const char *a, size_t a_len, const char *b,
 static char gstr_ascii_lower(char c) {
   if (c >= 'A' && c <= 'Z')
     return (char)(c + ('a' - 'A'));
+  return c;
+}
+
+/*
+ * Converts ASCII lowercase to uppercase.
+ */
+static char gstr_ascii_upper(char c) {
+  if (c >= 'a' && c <= 'z')
+    return (char)(c - ('a' - 'A'));
   return c;
 }
 
@@ -2047,14 +1966,13 @@ static int gstr_cmp_grapheme_icase(const char *a, size_t a_len, const char *b,
 }
 
 /*
- * Checks if grapheme g (of length g_len) is in the set of graphemes.
- * The set is a string where each grapheme is a potential match.
+ * Checks if grapheme g is in the set of graphemes.
  */
 static int gstr_grapheme_in_set(const char *g, size_t g_len, const char *set,
                                 size_t set_len) {
   int offset = 0;
   while ((size_t)offset < set_len) {
-    int next = utflite_next_grapheme(set, (int)set_len, offset);
+    int next = utf8_next_grapheme(set, (int)set_len, offset);
     size_t grapheme_len = (size_t)(next - offset);
 
     if (grapheme_len == g_len && memcmp(g, set + offset, g_len) == 0) {
@@ -2065,8 +1983,21 @@ static int gstr_grapheme_in_set(const char *g, size_t g_len, const char *set,
   return 0;
 }
 
+/*
+ * Checks if a grapheme is ASCII whitespace.
+ */
+static int gstr_is_whitespace(const char *g, size_t g_len) {
+  if (g_len == 2 && g[0] == '\r' && g[1] == '\n')
+    return 1;
+  if (g_len != 1)
+    return 0;
+  char c = g[0];
+  return c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\v' ||
+         c == '\f';
+}
+
 /* ============================================================================
- * Length Functions
+ * Grapheme String Layer: Length Functions
  * ============================================================================
  */
 
@@ -2078,7 +2009,7 @@ size_t gstrlen(const char *s, size_t byte_len) {
   int offset = 0;
 
   while ((size_t)offset < byte_len) {
-    offset = utflite_next_grapheme(s, (int)byte_len, offset);
+    offset = utf8_next_grapheme(s, (int)byte_len, offset);
     count++;
   }
 
@@ -2093,15 +2024,33 @@ size_t gstrnlen(const char *s, size_t byte_len, size_t max_graphemes) {
   int offset = 0;
 
   while ((size_t)offset < byte_len && count < max_graphemes) {
-    offset = utflite_next_grapheme(s, (int)byte_len, offset);
+    offset = utf8_next_grapheme(s, (int)byte_len, offset);
     count++;
   }
 
   return count;
 }
 
+size_t gstrwidth(const char *s, size_t byte_len) {
+  if (!s || byte_len == 0)
+    return 0;
+
+  size_t width = 0;
+  int offset = 0;
+
+  while ((size_t)offset < byte_len) {
+    int char_width = utf8_charwidth(s, (int)byte_len, offset);
+    if (char_width > 0) {
+      width += (size_t)char_width;
+    }
+    offset = utf8_next(s, (int)byte_len, offset);
+  }
+
+  return width;
+}
+
 /* ============================================================================
- * Indexing Functions
+ * Grapheme String Layer: Indexing Functions
  * ============================================================================
  */
 
@@ -2113,7 +2062,7 @@ size_t gstroff(const char *s, size_t byte_len, size_t grapheme_n) {
   size_t count = 0;
 
   while ((size_t)offset < byte_len && count < grapheme_n) {
-    offset = utflite_next_grapheme(s, (int)byte_len, offset);
+    offset = utf8_next_grapheme(s, (int)byte_len, offset);
     count++;
   }
 
@@ -2128,17 +2077,15 @@ const char *gstrat(const char *s, size_t byte_len, size_t grapheme_n,
   int offset = 0;
   size_t count = 0;
 
-  /* Find the start of the Nth grapheme */
   while ((size_t)offset < byte_len && count < grapheme_n) {
-    offset = utflite_next_grapheme(s, (int)byte_len, offset);
+    offset = utf8_next_grapheme(s, (int)byte_len, offset);
     count++;
   }
 
   if ((size_t)offset >= byte_len)
     return NULL;
 
-  /* Find the end of this grapheme */
-  int next = utflite_next_grapheme(s, (int)byte_len, offset);
+  int next = utf8_next_grapheme(s, (int)byte_len, offset);
 
   if (out_len)
     *out_len = (size_t)(next - offset);
@@ -2147,7 +2094,7 @@ const char *gstrat(const char *s, size_t byte_len, size_t grapheme_n,
 }
 
 /* ============================================================================
- * Comparison Functions
+ * Grapheme String Layer: Comparison Functions
  * ============================================================================
  */
 
@@ -2163,8 +2110,8 @@ int gstrcmp(const char *a, size_t a_len, const char *b, size_t b_len) {
   int b_off = 0;
 
   while ((size_t)a_off < a_len && (size_t)b_off < b_len) {
-    int a_next = utflite_next_grapheme(a, (int)a_len, a_off);
-    int b_next = utflite_next_grapheme(b, (int)b_len, b_off);
+    int a_next = utf8_next_grapheme(a, (int)a_len, a_off);
+    int b_next = utf8_next_grapheme(b, (int)b_len, b_off);
 
     size_t a_glen = (size_t)(a_next - a_off);
     size_t b_glen = (size_t)(b_next - b_off);
@@ -2177,11 +2124,8 @@ int gstrcmp(const char *a, size_t a_len, const char *b, size_t b_len) {
     b_off = b_next;
   }
 
-  /* If we've exhausted both strings, they're equal */
   if ((size_t)a_off >= a_len && (size_t)b_off >= b_len)
     return 0;
-
-  /* Shorter string is "less" */
   if ((size_t)a_off >= a_len)
     return -1;
   return 1;
@@ -2203,8 +2147,8 @@ int gstrncmp(const char *a, size_t a_len, const char *b, size_t b_len,
   size_t count = 0;
 
   while ((size_t)a_off < a_len && (size_t)b_off < b_len && count < n) {
-    int a_next = utflite_next_grapheme(a, (int)a_len, a_off);
-    int b_next = utflite_next_grapheme(b, (int)b_len, b_off);
+    int a_next = utf8_next_grapheme(a, (int)a_len, a_off);
+    int b_next = utf8_next_grapheme(b, (int)b_len, b_off);
 
     size_t a_glen = (size_t)(a_next - a_off);
     size_t b_glen = (size_t)(b_next - b_off);
@@ -2221,7 +2165,6 @@ int gstrncmp(const char *a, size_t a_len, const char *b, size_t b_len,
   if (count == n)
     return 0;
 
-  /* Didn't reach n graphemes - one string is shorter */
   if ((size_t)a_off >= a_len && (size_t)b_off >= b_len)
     return 0;
   if ((size_t)a_off >= a_len)
@@ -2241,8 +2184,8 @@ int gstrcasecmp(const char *a, size_t a_len, const char *b, size_t b_len) {
   int b_off = 0;
 
   while ((size_t)a_off < a_len && (size_t)b_off < b_len) {
-    int a_next = utflite_next_grapheme(a, (int)a_len, a_off);
-    int b_next = utflite_next_grapheme(b, (int)b_len, b_off);
+    int a_next = utf8_next_grapheme(a, (int)a_len, a_off);
+    int b_next = utf8_next_grapheme(b, (int)b_len, b_off);
 
     size_t a_glen = (size_t)(a_next - a_off);
     size_t b_glen = (size_t)(b_next - b_off);
@@ -2262,8 +2205,129 @@ int gstrcasecmp(const char *a, size_t a_len, const char *b, size_t b_len) {
   return 1;
 }
 
+int gstrncasecmp(const char *a, size_t a_len, const char *b, size_t b_len,
+                 size_t n) {
+  if (n == 0)
+    return 0;
+  if (!a && !b)
+    return 0;
+  if (!a)
+    return -1;
+  if (!b)
+    return 1;
+
+  int a_off = 0;
+  int b_off = 0;
+  size_t count = 0;
+
+  while ((size_t)a_off < a_len && (size_t)b_off < b_len && count < n) {
+    int a_next = utf8_next_grapheme(a, (int)a_len, a_off);
+    int b_next = utf8_next_grapheme(b, (int)b_len, b_off);
+
+    size_t a_glen = (size_t)(a_next - a_off);
+    size_t b_glen = (size_t)(b_next - b_off);
+
+    int cmp = gstr_cmp_grapheme_icase(a + a_off, a_glen, b + b_off, b_glen);
+    if (cmp != 0)
+      return cmp;
+
+    a_off = a_next;
+    b_off = b_next;
+    count++;
+  }
+
+  if (count == n)
+    return 0;
+
+  if ((size_t)a_off >= a_len && (size_t)b_off >= b_len)
+    return 0;
+  if ((size_t)a_off >= a_len)
+    return -1;
+  return 1;
+}
+
 /* ============================================================================
- * Search Functions
+ * Grapheme String Layer: Prefix/Suffix Functions
+ * ============================================================================
+ */
+
+int gstrstartswith(const char *s, size_t s_len, const char *prefix, size_t prefix_len) {
+  if (!s || !prefix)
+    return 0;
+  if (prefix_len == 0)
+    return 1;
+  if (s_len < prefix_len)
+    return 0;
+
+  /* Compare grapheme by grapheme */
+  int s_off = 0;
+  int p_off = 0;
+
+  while ((size_t)p_off < prefix_len) {
+    if ((size_t)s_off >= s_len)
+      return 0;
+
+    int s_next = utf8_next_grapheme(s, (int)s_len, s_off);
+    int p_next = utf8_next_grapheme(prefix, (int)prefix_len, p_off);
+
+    size_t s_glen = (size_t)(s_next - s_off);
+    size_t p_glen = (size_t)(p_next - p_off);
+
+    if (s_glen != p_glen || memcmp(s + s_off, prefix + p_off, s_glen) != 0)
+      return 0;
+
+    s_off = s_next;
+    p_off = p_next;
+  }
+
+  return 1;
+}
+
+int gstrendswith(const char *s, size_t s_len, const char *suffix, size_t suffix_len) {
+  if (!s || !suffix)
+    return 0;
+  if (suffix_len == 0)
+    return 1;
+  if (s_len < suffix_len)
+    return 0;
+
+  /* Count graphemes in both strings */
+  size_t s_graphemes = gstrlen(s, s_len);
+  size_t suffix_graphemes = gstrlen(suffix, suffix_len);
+
+  if (suffix_graphemes > s_graphemes)
+    return 0;
+
+  /* Find offset to start comparison */
+  size_t start_grapheme = s_graphemes - suffix_graphemes;
+  size_t s_offset = gstroff(s, s_len, start_grapheme);
+
+  /* Compare remaining graphemes */
+  int s_off = (int)s_offset;
+  int suf_off = 0;
+
+  while ((size_t)suf_off < suffix_len) {
+    if ((size_t)s_off >= s_len)
+      return 0;
+
+    int s_next = utf8_next_grapheme(s, (int)s_len, s_off);
+    int suf_next = utf8_next_grapheme(suffix, (int)suffix_len, suf_off);
+
+    size_t s_glen = (size_t)(s_next - s_off);
+    size_t suf_glen = (size_t)(suf_next - suf_off);
+
+    if (s_glen != suf_glen || memcmp(s + s_off, suffix + suf_off, s_glen) != 0)
+      return 0;
+
+    s_off = s_next;
+    suf_off = suf_next;
+  }
+
+  return 1;
+}
+
+/* ============================================================================
+ * Grapheme String Layer: Search Functions
  * ============================================================================
  */
 
@@ -2275,7 +2339,7 @@ const char *gstrchr(const char *s, size_t len, const char *grapheme,
   int offset = 0;
 
   while ((size_t)offset < len) {
-    int next = utflite_next_grapheme(s, (int)len, offset);
+    int next = utf8_next_grapheme(s, (int)len, offset);
     size_t grapheme_len = (size_t)(next - offset);
 
     if (grapheme_len == g_len && memcmp(s + offset, grapheme, g_len) == 0) {
@@ -2297,7 +2361,7 @@ const char *gstrrchr(const char *s, size_t len, const char *grapheme,
   int offset = 0;
 
   while ((size_t)offset < len) {
-    int next = utflite_next_grapheme(s, (int)len, offset);
+    int next = utf8_next_grapheme(s, (int)len, offset);
     size_t grapheme_len = (size_t)(next - offset);
 
     if (grapheme_len == g_len && memcmp(s + offset, grapheme, g_len) == 0) {
@@ -2319,7 +2383,6 @@ const char *gstrstr(const char *haystack, size_t h_len, const char *needle,
   if (h_len == 0)
     return NULL;
 
-  /* Count graphemes in needle */
   size_t needle_graphemes = gstrlen(needle, n_len);
   if (needle_graphemes == 0)
     return haystack;
@@ -2327,7 +2390,6 @@ const char *gstrstr(const char *haystack, size_t h_len, const char *needle,
   int h_off = 0;
 
   while ((size_t)h_off < h_len) {
-    /* Check if needle matches starting at this position */
     int h_pos = h_off;
     int n_pos = 0;
     int match = 1;
@@ -2339,8 +2401,8 @@ const char *gstrstr(const char *haystack, size_t h_len, const char *needle,
         break;
       }
 
-      int h_next = utflite_next_grapheme(haystack, (int)h_len, h_pos);
-      int n_next = utflite_next_grapheme(needle, (int)n_len, n_pos);
+      int h_next = utf8_next_grapheme(haystack, (int)h_len, h_pos);
+      int n_next = utf8_next_grapheme(needle, (int)n_len, n_pos);
 
       size_t h_glen = (size_t)(h_next - h_pos);
       size_t n_glen = (size_t)(n_next - n_pos);
@@ -2359,15 +2421,146 @@ const char *gstrstr(const char *haystack, size_t h_len, const char *needle,
     if (match)
       return haystack + h_off;
 
-    /* Move to next grapheme in haystack */
-    h_off = utflite_next_grapheme(haystack, (int)h_len, h_off);
+    h_off = utf8_next_grapheme(haystack, (int)h_len, h_off);
   }
 
   return NULL;
 }
 
+const char *gstrrstr(const char *haystack, size_t h_len, const char *needle,
+                     size_t n_len) {
+  if (!haystack || !needle)
+    return NULL;
+  if (n_len == 0)
+    return haystack + h_len;
+  if (h_len == 0)
+    return NULL;
+
+  const char *last_match = NULL;
+  size_t needle_graphemes = gstrlen(needle, n_len);
+  if (needle_graphemes == 0)
+    return haystack + h_len;
+
+  int h_off = 0;
+
+  while ((size_t)h_off < h_len) {
+    int h_pos = h_off;
+    int n_pos = 0;
+    int match = 1;
+    size_t matched_graphemes = 0;
+
+    while (matched_graphemes < needle_graphemes) {
+      if ((size_t)h_pos >= h_len) {
+        match = 0;
+        break;
+      }
+
+      int h_next = utf8_next_grapheme(haystack, (int)h_len, h_pos);
+      int n_next = utf8_next_grapheme(needle, (int)n_len, n_pos);
+
+      size_t h_glen = (size_t)(h_next - h_pos);
+      size_t n_glen = (size_t)(n_next - n_pos);
+
+      if (h_glen != n_glen ||
+          memcmp(haystack + h_pos, needle + n_pos, h_glen) != 0) {
+        match = 0;
+        break;
+      }
+
+      h_pos = h_next;
+      n_pos = n_next;
+      matched_graphemes++;
+    }
+
+    if (match)
+      last_match = haystack + h_off;
+
+    h_off = utf8_next_grapheme(haystack, (int)h_len, h_off);
+  }
+
+  return last_match;
+}
+
+const char *gstrcasestr(const char *haystack, size_t h_len, const char *needle,
+                        size_t n_len) {
+  if (!haystack || !needle)
+    return NULL;
+  if (n_len == 0)
+    return haystack;
+  if (h_len == 0)
+    return NULL;
+
+  size_t needle_graphemes = gstrlen(needle, n_len);
+  if (needle_graphemes == 0)
+    return haystack;
+
+  int h_off = 0;
+
+  while ((size_t)h_off < h_len) {
+    int h_pos = h_off;
+    int n_pos = 0;
+    int match = 1;
+    size_t matched_graphemes = 0;
+
+    while (matched_graphemes < needle_graphemes) {
+      if ((size_t)h_pos >= h_len) {
+        match = 0;
+        break;
+      }
+
+      int h_next = utf8_next_grapheme(haystack, (int)h_len, h_pos);
+      int n_next = utf8_next_grapheme(needle, (int)n_len, n_pos);
+
+      size_t h_glen = (size_t)(h_next - h_pos);
+      size_t n_glen = (size_t)(n_next - n_pos);
+
+      if (gstr_cmp_grapheme_icase(haystack + h_pos, h_glen, needle + n_pos,
+                                  n_glen) != 0) {
+        match = 0;
+        break;
+      }
+
+      h_pos = h_next;
+      n_pos = n_next;
+      matched_graphemes++;
+    }
+
+    if (match)
+      return haystack + h_off;
+
+    h_off = utf8_next_grapheme(haystack, (int)h_len, h_off);
+  }
+
+  return NULL;
+}
+
+size_t gstrcount(const char *s, size_t len, const char *needle, size_t n_len) {
+  if (!s || len == 0 || !needle || n_len == 0)
+    return 0;
+
+  size_t count = 0;
+  const char *pos = s;
+  size_t remaining = len;
+
+  while (remaining > 0) {
+    const char *found = gstrstr(pos, remaining, needle, n_len);
+    if (!found)
+      break;
+
+    count++;
+    size_t skip = (size_t)(found - pos) + n_len;
+    if (skip > remaining)
+      break;
+
+    pos = found + n_len;
+    remaining = len - (size_t)(pos - s);
+  }
+
+  return count;
+}
+
 /* ============================================================================
- * Span Functions
+ * Grapheme String Layer: Span Functions
  * ============================================================================
  */
 
@@ -2379,7 +2572,7 @@ size_t gstrspn(const char *s, size_t len, const char *accept, size_t a_len) {
   int offset = 0;
 
   while ((size_t)offset < len) {
-    int next = utflite_next_grapheme(s, (int)len, offset);
+    int next = utf8_next_grapheme(s, (int)len, offset);
     size_t grapheme_len = (size_t)(next - offset);
 
     if (!gstr_grapheme_in_set(s + offset, grapheme_len, accept, a_len)) {
@@ -2403,7 +2596,7 @@ size_t gstrcspn(const char *s, size_t len, const char *reject, size_t r_len) {
   int offset = 0;
 
   while ((size_t)offset < len) {
-    int next = utflite_next_grapheme(s, (int)len, offset);
+    int next = utf8_next_grapheme(s, (int)len, offset);
     size_t grapheme_len = (size_t)(next - offset);
 
     if (gstr_grapheme_in_set(s + offset, grapheme_len, reject, r_len)) {
@@ -2425,7 +2618,7 @@ const char *gstrpbrk(const char *s, size_t len, const char *accept,
   int offset = 0;
 
   while ((size_t)offset < len) {
-    int next = utflite_next_grapheme(s, (int)len, offset);
+    int next = utf8_next_grapheme(s, (int)len, offset);
     size_t grapheme_len = (size_t)(next - offset);
 
     if (gstr_grapheme_in_set(s + offset, grapheme_len, accept, a_len)) {
@@ -2439,7 +2632,7 @@ const char *gstrpbrk(const char *s, size_t len, const char *accept,
 }
 
 /* ============================================================================
- * Extraction Functions
+ * Grapheme String Layer: Extraction Functions
  * ============================================================================
  */
 
@@ -2453,29 +2646,26 @@ size_t gstrsub(char *dst, size_t dst_size, const char *src, size_t src_len,
   if (!src || src_len == 0 || count == 0)
     return 0;
 
-  /* Find start position */
   size_t start_offset = gstroff(src, src_len, start_grapheme);
   if (start_offset >= src_len)
     return 0;
 
-  /* Find end position */
   int offset = (int)start_offset;
   size_t graphemes_copied = 0;
 
   while ((size_t)offset < src_len && graphemes_copied < count) {
-    offset = utflite_next_grapheme(src, (int)src_len, offset);
+    offset = utf8_next_grapheme(src, (int)src_len, offset);
     graphemes_copied++;
   }
 
   size_t bytes_to_copy = (size_t)offset - start_offset;
 
-  /* Ensure we don't overflow dst - find last complete grapheme that fits */
   if (bytes_to_copy >= dst_size) {
     int fit_offset = (int)start_offset;
     int last_complete = (int)start_offset;
 
     while ((size_t)fit_offset < start_offset + bytes_to_copy) {
-      int next = utflite_next_grapheme(src, (int)src_len, fit_offset);
+      int next = utf8_next_grapheme(src, (int)src_len, fit_offset);
       if ((size_t)(next - (int)start_offset) < dst_size) {
         last_complete = next;
       } else {
@@ -2493,7 +2683,7 @@ size_t gstrsub(char *dst, size_t dst_size, const char *src, size_t src_len,
 }
 
 /* ============================================================================
- * Copy Functions
+ * Grapheme String Layer: Copy Functions
  * ============================================================================
  */
 
@@ -2510,12 +2700,11 @@ size_t gstrcpy(char *dst, size_t dst_size, const char *src, size_t src_len) {
   if (bytes_to_copy >= dst_size)
     bytes_to_copy = dst_size - 1;
 
-  /* Find last complete grapheme that fits */
   int offset = 0;
   int last_complete = 0;
 
   while ((size_t)offset < bytes_to_copy) {
-    int next = utflite_next_grapheme(src, (int)src_len, offset);
+    int next = utf8_next_grapheme(src, (int)src_len, offset);
     if ((size_t)next <= bytes_to_copy) {
       last_complete = next;
     } else {
@@ -2543,9 +2732,8 @@ size_t gstrncpy(char *dst, size_t dst_size, const char *src, size_t src_len,
   int offset = 0;
   size_t count = 0;
 
-  /* Find the end of the nth grapheme or end of string */
   while ((size_t)offset < src_len && count < n) {
-    offset = utflite_next_grapheme(src, (int)src_len, offset);
+    offset = utf8_next_grapheme(src, (int)src_len, offset);
     count++;
   }
 
@@ -2553,12 +2741,11 @@ size_t gstrncpy(char *dst, size_t dst_size, const char *src, size_t src_len,
   if (bytes_to_copy >= dst_size)
     bytes_to_copy = dst_size - 1;
 
-  /* Find last complete grapheme that fits in dst */
   int fit_offset = 0;
   int last_complete = 0;
 
   while ((size_t)fit_offset < bytes_to_copy) {
-    int next = utflite_next_grapheme(src, (int)src_len, fit_offset);
+    int next = utf8_next_grapheme(src, (int)src_len, fit_offset);
     if ((size_t)next <= bytes_to_copy) {
       last_complete = next;
     } else {
@@ -2574,7 +2761,7 @@ size_t gstrncpy(char *dst, size_t dst_size, const char *src, size_t src_len,
 }
 
 /* ============================================================================
- * Concatenation Functions
+ * Grapheme String Layer: Concatenation Functions
  * ============================================================================
  */
 
@@ -2594,12 +2781,11 @@ size_t gstrcat(char *dst, size_t dst_size, const char *src, size_t src_len) {
   if (bytes_to_copy > remaining)
     bytes_to_copy = remaining;
 
-  /* Find last complete grapheme that fits */
   int offset = 0;
   int last_complete = 0;
 
   while ((size_t)offset < bytes_to_copy) {
-    int next = utflite_next_grapheme(src, (int)src_len, offset);
+    int next = utf8_next_grapheme(src, (int)src_len, offset);
     if ((size_t)next <= bytes_to_copy) {
       last_complete = next;
     } else {
@@ -2626,12 +2812,11 @@ size_t gstrncat(char *dst, size_t dst_size, const char *src, size_t src_len,
   if (!src || src_len == 0 || n == 0)
     return dst_len;
 
-  /* Find the end of the nth grapheme or end of string */
   int offset = 0;
   size_t count = 0;
 
   while ((size_t)offset < src_len && count < n) {
-    offset = utflite_next_grapheme(src, (int)src_len, offset);
+    offset = utf8_next_grapheme(src, (int)src_len, offset);
     count++;
   }
 
@@ -2640,12 +2825,11 @@ size_t gstrncat(char *dst, size_t dst_size, const char *src, size_t src_len,
   if (bytes_to_append > remaining)
     bytes_to_append = remaining;
 
-  /* Find last complete grapheme that fits */
   int fit_offset = 0;
   int last_complete = 0;
 
   while ((size_t)fit_offset < bytes_to_append) {
-    int next = utflite_next_grapheme(src, (int)src_len, fit_offset);
+    int next = utf8_next_grapheme(src, (int)src_len, fit_offset);
     if ((size_t)next <= bytes_to_append) {
       last_complete = next;
     } else {
@@ -2659,213 +2843,61 @@ size_t gstrncat(char *dst, size_t dst_size, const char *src, size_t src_len,
 
   return dst_len + (size_t)last_complete;
 }
+
 /* ============================================================================
- * Additional Comparison Functions
+ * Grapheme String Layer: Allocation Functions
  * ============================================================================
  */
-int gstrncasecmp(const char *a, size_t a_len, const char *b, size_t b_len,
-                 size_t n) {
-  if (n == 0)
-    return 0;
-  if (!a && !b)
-    return 0;
-  if (!a)
-    return -1;
-  if (!b)
-    return 1;
-  int a_off = 0;
-  int b_off = 0;
-  size_t count = 0;
-  while ((size_t)a_off < a_len && (size_t)b_off < b_len && count < n) {
-    int a_next = utflite_next_grapheme(a, (int)a_len, a_off);
-    int b_next = utflite_next_grapheme(b, (int)b_len, b_off);
-    size_t a_glen = (size_t)(a_next - a_off);
-    size_t b_glen = (size_t)(b_next - b_off);
-    int cmp = gstr_cmp_grapheme_icase(a + a_off, a_glen, b + b_off, b_glen);
-    if (cmp != 0)
-      return cmp;
-    a_off = a_next;
-    b_off = b_next;
-    count++;
-  }
-  if (count == n)
-    return 0;
-  /* Didn't reach n graphemes - one string is shorter */
-  if ((size_t)a_off >= a_len && (size_t)b_off >= b_len)
-    return 0;
-  if ((size_t)a_off >= a_len)
-    return -1;
-  return 1;
-}
-/* ============================================================================
- * Allocation Functions
- * ============================================================================
- */
+
 char *gstrdup(const char *s, size_t len) {
   if (!s)
     return NULL;
+
   char *result = malloc(len + 1);
   if (!result)
     return NULL;
+
   memcpy(result, s, len);
   result[len] = '\0';
   return result;
 }
+
 char *gstrndup(const char *s, size_t len, size_t n) {
   if (!s)
     return NULL;
+
   if (n == 0)
     return gstrdup("", 0);
-  /* Find byte offset after n graphemes */
+
   int offset = 0;
   size_t count = 0;
+
   while ((size_t)offset < len && count < n) {
-    offset = utflite_next_grapheme(s, (int)len, offset);
+    offset = utf8_next_grapheme(s, (int)len, offset);
     count++;
   }
+
   return gstrdup(s, (size_t)offset);
 }
+
 /* ============================================================================
- * Additional Search Functions
+ * Grapheme String Layer: Tokenization Functions
  * ============================================================================
  */
-const char *gstrrstr(const char *haystack, size_t h_len, const char *needle,
-                     size_t n_len) {
-  if (!haystack || !needle)
-    return NULL;
-  if (n_len == 0)
-    return haystack + h_len; /* Point to end for empty needle */
-  if (h_len == 0)
-    return NULL;
-  const char *last_match = NULL;
-  size_t needle_graphemes = gstrlen(needle, n_len);
-  if (needle_graphemes == 0)
-    return haystack + h_len;
-  int h_off = 0;
-  while ((size_t)h_off < h_len) {
-    /* Check if needle matches starting at this position */
-    int h_pos = h_off;
-    int n_pos = 0;
-    int match = 1;
-    size_t matched_graphemes = 0;
-    while (matched_graphemes < needle_graphemes) {
-      if ((size_t)h_pos >= h_len) {
-        match = 0;
-        break;
-      }
-      int h_next = utflite_next_grapheme(haystack, (int)h_len, h_pos);
-      int n_next = utflite_next_grapheme(needle, (int)n_len, n_pos);
-      size_t h_glen = (size_t)(h_next - h_pos);
-      size_t n_glen = (size_t)(n_next - n_pos);
-      if (h_glen != n_glen ||
-          memcmp(haystack + h_pos, needle + n_pos, h_glen) != 0) {
-        match = 0;
-        break;
-      }
-      h_pos = h_next;
-      n_pos = n_next;
-      matched_graphemes++;
-    }
-    if (match)
-      last_match = haystack + h_off;
-    /* Move to next grapheme in haystack */
-    h_off = utflite_next_grapheme(haystack, (int)h_len, h_off);
-  }
-  return last_match;
-}
-/*
- * Helper: checks if a grapheme is ASCII whitespace.
- * Also handles CRLF (\r\n) which is a single 2-byte grapheme per UAX #29.
- */
-static int gstr_is_whitespace(const char *g, size_t g_len) {
-  /* Handle CR LF as whitespace (single grapheme per UAX #29) */
-  if (g_len == 2 && g[0] == '\r' && g[1] == '\n')
-    return 1;
-  if (g_len != 1)
-    return 0;
-  char c = g[0];
-  return c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\v' ||
-         c == '\f';
-}
-const char *gstrcasestr(const char *haystack, size_t h_len, const char *needle,
-                        size_t n_len) {
-  if (!haystack || !needle)
-    return NULL;
-  if (n_len == 0)
-    return haystack;
-  if (h_len == 0)
-    return NULL;
-  size_t needle_graphemes = gstrlen(needle, n_len);
-  if (needle_graphemes == 0)
-    return haystack;
-  int h_off = 0;
-  while ((size_t)h_off < h_len) {
-    /* Check if needle matches starting at this position (case-insensitive) */
-    int h_pos = h_off;
-    int n_pos = 0;
-    int match = 1;
-    size_t matched_graphemes = 0;
-    while (matched_graphemes < needle_graphemes) {
-      if ((size_t)h_pos >= h_len) {
-        match = 0;
-        break;
-      }
-      int h_next = utflite_next_grapheme(haystack, (int)h_len, h_pos);
-      int n_next = utflite_next_grapheme(needle, (int)n_len, n_pos);
-      size_t h_glen = (size_t)(h_next - h_pos);
-      size_t n_glen = (size_t)(n_next - n_pos);
-      if (gstr_cmp_grapheme_icase(haystack + h_pos, h_glen, needle + n_pos,
-                                  n_glen) != 0) {
-        match = 0;
-        break;
-      }
-      h_pos = h_next;
-      n_pos = n_next;
-      matched_graphemes++;
-    }
-    if (match)
-      return haystack + h_off;
-    h_off = utflite_next_grapheme(haystack, (int)h_len, h_off);
-  }
-  return NULL;
-}
-size_t gstrcount(const char *s, size_t len, const char *needle, size_t n_len) {
-  if (!s || len == 0 || !needle || n_len == 0)
-    return 0;
-  size_t count = 0;
-  const char *pos = s;
-  size_t remaining = len;
-  while (remaining > 0) {
-    const char *found = gstrstr(pos, remaining, needle, n_len);
-    if (!found)
-      break;
-    count++;
-    /* Move past the match */
-    size_t skip = (size_t)(found - pos) + n_len;
-    if (skip > remaining)
-      break;
-    pos = found + n_len;
-    remaining = len - (size_t)(pos - s);
-  }
-  return count;
-}
-/* ============================================================================
- * Tokenization Functions
- * ============================================================================
- */
+
 const char *gstrsep(const char **stringp, size_t *lenp, const char *delim,
                     size_t d_len, size_t *tok_len) {
   if (!stringp || !*stringp || !lenp)
     return NULL;
 
-  /* Exhausted - set stringp to NULL to signal end */
   if (*lenp == 0) {
     *stringp = NULL;
     return NULL;
   }
+
   const char *start = *stringp;
   size_t len = *lenp;
-  /* Handle empty delimiter - return entire string */
+
   if (!delim || d_len == 0) {
     if (tok_len)
       *tok_len = len;
@@ -2873,14 +2905,14 @@ const char *gstrsep(const char **stringp, size_t *lenp, const char *delim,
     *lenp = 0;
     return start;
   }
-  /* Find first delimiter */
+
   int offset = 0;
+
   while ((size_t)offset < len) {
-    int next = utflite_next_grapheme(start, (int)len, offset);
+    int next = utf8_next_grapheme(start, (int)len, offset);
     size_t grapheme_len = (size_t)(next - offset);
-    /* Check if this grapheme is in the delimiter set */
+
     if (gstr_grapheme_in_set(start + offset, grapheme_len, delim, d_len)) {
-      /* Found delimiter - return token before it */
       if (tok_len)
         *tok_len = (size_t)offset;
       *stringp = start + next;
@@ -2889,161 +2921,191 @@ const char *gstrsep(const char **stringp, size_t *lenp, const char *delim,
     }
     offset = next;
   }
-  /* No delimiter found - return entire remaining string */
+
   if (tok_len)
     *tok_len = len;
   *stringp = NULL;
   *lenp = 0;
   return start;
 }
+
 /* ============================================================================
- * Trimming Functions
+ * Grapheme String Layer: Trimming Functions
  * ============================================================================
  */
+
 size_t gstrltrim(char *dst, size_t dst_size, const char *src, size_t src_len) {
   if (!dst || dst_size == 0)
     return 0;
+
   dst[0] = '\0';
+
   if (!src || src_len == 0)
     return 0;
-  /* Find first non-whitespace grapheme */
+
   int offset = 0;
+
   while ((size_t)offset < src_len) {
-    int next = utflite_next_grapheme(src, (int)src_len, offset);
+    int next = utf8_next_grapheme(src, (int)src_len, offset);
     size_t grapheme_len = (size_t)(next - offset);
+
     if (!gstr_is_whitespace(src + offset, grapheme_len)) {
       break;
     }
     offset = next;
   }
-  /* Copy from first non-whitespace to end */
+
   size_t remaining = src_len - (size_t)offset;
   return gstrcpy(dst, dst_size, src + offset, remaining);
 }
+
 size_t gstrrtrim(char *dst, size_t dst_size, const char *src, size_t src_len) {
   if (!dst || dst_size == 0)
     return 0;
+
   dst[0] = '\0';
+
   if (!src || src_len == 0)
     return 0;
-  /* Build list of grapheme end offsets to find the last non-whitespace */
+
   int last_non_ws_end = 0;
   int offset = 0;
+
   while ((size_t)offset < src_len) {
-    int next = utflite_next_grapheme(src, (int)src_len, offset);
+    int next = utf8_next_grapheme(src, (int)src_len, offset);
     size_t grapheme_len = (size_t)(next - offset);
+
     if (!gstr_is_whitespace(src + offset, grapheme_len)) {
       last_non_ws_end = next;
     }
     offset = next;
   }
-  /* Copy from start to end of last non-whitespace */
+
   return gstrcpy(dst, dst_size, src, (size_t)last_non_ws_end);
 }
+
 size_t gstrtrim(char *dst, size_t dst_size, const char *src, size_t src_len) {
   if (!dst || dst_size == 0)
     return 0;
+
   dst[0] = '\0';
+
   if (!src || src_len == 0)
     return 0;
-  /* Find first non-whitespace grapheme */
+
   int start_offset = 0;
+
   while ((size_t)start_offset < src_len) {
-    int next = utflite_next_grapheme(src, (int)src_len, start_offset);
+    int next = utf8_next_grapheme(src, (int)src_len, start_offset);
     size_t grapheme_len = (size_t)(next - start_offset);
+
     if (!gstr_is_whitespace(src + start_offset, grapheme_len)) {
       break;
     }
     start_offset = next;
   }
-  /* All whitespace? */
+
   if ((size_t)start_offset >= src_len)
     return 0;
-  /* Find last non-whitespace grapheme end */
+
   int last_non_ws_end = start_offset;
   int offset = start_offset;
+
   while ((size_t)offset < src_len) {
-    int next = utflite_next_grapheme(src, (int)src_len, offset);
+    int next = utf8_next_grapheme(src, (int)src_len, offset);
     size_t grapheme_len = (size_t)(next - offset);
+
     if (!gstr_is_whitespace(src + offset, grapheme_len)) {
       last_non_ws_end = next;
     }
     offset = next;
   }
-  /* Copy the trimmed portion */
+
   size_t trimmed_len = (size_t)last_non_ws_end - (size_t)start_offset;
   return gstrcpy(dst, dst_size, src + start_offset, trimmed_len);
 }
+
 /* ============================================================================
- * Transformation Functions
+ * Grapheme String Layer: Transformation Functions
  * ============================================================================
  */
+
 size_t gstrrev(char *dst, size_t dst_size, const char *src, size_t src_len) {
   if (!dst || dst_size == 0)
     return 0;
+
   dst[0] = '\0';
+
   if (!src || src_len == 0)
     return 0;
-  /* Count graphemes and collect their offsets */
+
   size_t grapheme_count = gstrlen(src, src_len);
   if (grapheme_count == 0)
     return 0;
-  /* Allocate array to store grapheme start offsets */
+
   int *offsets = malloc((grapheme_count + 1) * sizeof(int));
   if (!offsets)
     return 0;
-  /* Populate offsets */
+
   int offset = 0;
   size_t idx = 0;
+
   while ((size_t)offset < src_len && idx < grapheme_count) {
     offsets[idx++] = offset;
-    offset = utflite_next_grapheme(src, (int)src_len, offset);
+    offset = utf8_next_grapheme(src, (int)src_len, offset);
   }
-  offsets[grapheme_count] = offset; /* End offset */
-  /* Copy graphemes in reverse order */
+  offsets[grapheme_count] = offset;
+
   size_t written = 0;
+
   for (size_t i = grapheme_count; i > 0; i--) {
     int start = offsets[i - 1];
     int end = offsets[i];
     size_t glen = (size_t)(end - start);
-    /* Check if this grapheme fits */
+
     if (written + glen >= dst_size) {
-      break; /* Can't fit more complete graphemes */
+      break;
     }
+
     memcpy(dst + written, src + start, glen);
     written += glen;
   }
+
   free(offsets);
   dst[written] = '\0';
   return written;
 }
+
 size_t gstrreplace(char *dst, size_t dst_size, const char *src, size_t src_len,
                    const char *old_str, size_t old_len, const char *new_str,
                    size_t new_len) {
   if (!dst || dst_size == 0)
     return 0;
+
   dst[0] = '\0';
+
   if (!src || src_len == 0)
     return 0;
-  /* Handle empty old string - just copy src */
+
   if (!old_str || old_len == 0)
     return gstrcpy(dst, dst_size, src, src_len);
+
   size_t written = 0;
   const char *pos = src;
   size_t remaining = src_len;
+
   while (remaining > 0) {
-    /* Find next occurrence of old string */
     const char *found = gstrstr(pos, remaining, old_str, old_len);
+
     if (!found) {
-      /* No more matches - copy remaining */
       size_t to_copy = remaining;
       if (written + to_copy >= dst_size) {
-        /* Find last complete grapheme that fits */
         int fit_offset = 0;
         int last_complete = 0;
         size_t max_bytes = dst_size - written - 1;
+
         while ((size_t)fit_offset < to_copy && (size_t)fit_offset < max_bytes) {
-          int next = utflite_next_grapheme(pos, (int)remaining, fit_offset);
+          int next = utf8_next_grapheme(pos, (int)remaining, fit_offset);
           if ((size_t)next <= max_bytes) {
             last_complete = next;
           } else {
@@ -3057,17 +3119,18 @@ size_t gstrreplace(char *dst, size_t dst_size, const char *src, size_t src_len,
       written += to_copy;
       break;
     }
-    /* Copy segment before match */
+
     size_t before_len = (size_t)(found - pos);
+
     if (before_len > 0) {
       if (written + before_len >= dst_size) {
-        /* Find last complete grapheme that fits */
         int fit_offset = 0;
         int last_complete = 0;
         size_t max_bytes = dst_size - written - 1;
+
         while ((size_t)fit_offset < before_len &&
                (size_t)fit_offset < max_bytes) {
-          int next = utflite_next_grapheme(pos, (int)before_len, fit_offset);
+          int next = utf8_next_grapheme(pos, (int)before_len, fit_offset);
           if ((size_t)next <= max_bytes) {
             last_complete = next;
           } else {
@@ -3083,15 +3146,15 @@ size_t gstrreplace(char *dst, size_t dst_size, const char *src, size_t src_len,
       memcpy(dst + written, pos, before_len);
       written += before_len;
     }
-    /* Copy replacement string */
+
     if (new_str && new_len > 0) {
       if (written + new_len >= dst_size) {
-        /* Find last complete grapheme of replacement that fits */
         int fit_offset = 0;
         int last_complete = 0;
         size_t max_bytes = dst_size - written - 1;
+
         while ((size_t)fit_offset < new_len && (size_t)fit_offset < max_bytes) {
-          int next = utflite_next_grapheme(new_str, (int)new_len, fit_offset);
+          int next = utf8_next_grapheme(new_str, (int)new_len, fit_offset);
           if ((size_t)next <= max_bytes) {
             last_complete = next;
           } else {
@@ -3107,10 +3170,381 @@ size_t gstrreplace(char *dst, size_t dst_size, const char *src, size_t src_len,
       memcpy(dst + written, new_str, new_len);
       written += new_len;
     }
-    /* Move past the match */
+
     pos = found + old_len;
     remaining = src_len - (size_t)(pos - src);
   }
+
+  dst[written] = '\0';
+  return written;
+}
+
+/* ============================================================================
+ * Grapheme String Layer: Case Conversion Functions (ASCII only)
+ * ============================================================================
+ */
+
+size_t gstrlower(char *dst, size_t dst_size, const char *src, size_t src_len) {
+  if (!dst || dst_size == 0)
+    return 0;
+
+  dst[0] = '\0';
+
+  if (!src || src_len == 0)
+    return 0;
+
+  size_t bytes_to_copy = src_len;
+  if (bytes_to_copy >= dst_size)
+    bytes_to_copy = dst_size - 1;
+
+  /* Find last complete grapheme that fits */
+  int offset = 0;
+  int last_complete = 0;
+
+  while ((size_t)offset < bytes_to_copy) {
+    int next = utf8_next_grapheme(src, (int)src_len, offset);
+    if ((size_t)next <= bytes_to_copy) {
+      last_complete = next;
+    } else {
+      break;
+    }
+    offset = next;
+  }
+
+  /* Copy and convert ASCII to lowercase */
+  for (int i = 0; i < last_complete; i++) {
+    dst[i] = gstr_ascii_lower(src[i]);
+  }
+  dst[last_complete] = '\0';
+
+  return (size_t)last_complete;
+}
+
+size_t gstrupper(char *dst, size_t dst_size, const char *src, size_t src_len) {
+  if (!dst || dst_size == 0)
+    return 0;
+
+  dst[0] = '\0';
+
+  if (!src || src_len == 0)
+    return 0;
+
+  size_t bytes_to_copy = src_len;
+  if (bytes_to_copy >= dst_size)
+    bytes_to_copy = dst_size - 1;
+
+  /* Find last complete grapheme that fits */
+  int offset = 0;
+  int last_complete = 0;
+
+  while ((size_t)offset < bytes_to_copy) {
+    int next = utf8_next_grapheme(src, (int)src_len, offset);
+    if ((size_t)next <= bytes_to_copy) {
+      last_complete = next;
+    } else {
+      break;
+    }
+    offset = next;
+  }
+
+  /* Copy and convert ASCII to uppercase */
+  for (int i = 0; i < last_complete; i++) {
+    dst[i] = gstr_ascii_upper(src[i]);
+  }
+  dst[last_complete] = '\0';
+
+  return (size_t)last_complete;
+}
+
+/* ============================================================================
+ * Grapheme String Layer: Display/Truncation Functions
+ * ============================================================================
+ */
+
+size_t gstrellipsis(char *dst, size_t dst_size, const char *src, size_t src_len,
+                    size_t max_graphemes, const char *ellipsis, size_t ellipsis_len) {
+  if (!dst || dst_size == 0)
+    return 0;
+
+  dst[0] = '\0';
+
+  if (!src || src_len == 0)
+    return 0;
+
+  /* Default ellipsis */
+  if (!ellipsis || ellipsis_len == 0) {
+    ellipsis = "...";
+    ellipsis_len = 3;
+  }
+
+  /* Count source graphemes */
+  size_t src_graphemes = gstrlen(src, src_len);
+
+  /* If source fits, just copy it */
+  if (src_graphemes <= max_graphemes) {
+    return gstrcpy(dst, dst_size, src, src_len);
+  }
+
+  /* Count ellipsis graphemes */
+  size_t ellipsis_graphemes = gstrlen(ellipsis, ellipsis_len);
+
+  /* If ellipsis alone doesn't fit, truncate as much as possible */
+  if (ellipsis_graphemes >= max_graphemes) {
+    return gstrncpy(dst, dst_size, ellipsis, ellipsis_len, max_graphemes);
+  }
+
+  /* Copy truncated string + ellipsis */
+  size_t text_graphemes = max_graphemes - ellipsis_graphemes;
+  size_t written = gstrncpy(dst, dst_size, src, src_len, text_graphemes);
+
+  /* Append ellipsis if room */
+  size_t remaining = dst_size - written - 1;
+  if (remaining > 0 && ellipsis_len > 0) {
+    size_t ell_to_copy = ellipsis_len;
+    if (ell_to_copy > remaining) {
+      /* Find last complete grapheme of ellipsis that fits */
+      int offset = 0;
+      int last_complete = 0;
+      while ((size_t)offset < remaining && (size_t)offset < ellipsis_len) {
+        int next = utf8_next_grapheme(ellipsis, (int)ellipsis_len, offset);
+        if ((size_t)next <= remaining) {
+          last_complete = next;
+        } else {
+          break;
+        }
+        offset = next;
+      }
+      ell_to_copy = (size_t)last_complete;
+    }
+    memcpy(dst + written, ellipsis, ell_to_copy);
+    written += ell_to_copy;
+    dst[written] = '\0';
+  }
+
+  return written;
+}
+
+/* ============================================================================
+ * Grapheme String Layer: Fill/Padding Functions
+ * ============================================================================
+ */
+
+size_t gstrfill(char *dst, size_t dst_size, const char *grapheme, size_t g_len,
+                size_t count) {
+  if (!dst || dst_size == 0)
+    return 0;
+
+  dst[0] = '\0';
+
+  if (!grapheme || g_len == 0 || count == 0)
+    return 0;
+
+  size_t written = 0;
+
+  for (size_t i = 0; i < count; i++) {
+    if (written + g_len >= dst_size) {
+      break;
+    }
+    memcpy(dst + written, grapheme, g_len);
+    written += g_len;
+  }
+
+  dst[written] = '\0';
+  return written;
+}
+
+size_t gstrlpad(char *dst, size_t dst_size, const char *src, size_t src_len,
+                size_t width, const char *pad, size_t pad_len) {
+  if (!dst || dst_size == 0)
+    return 0;
+
+  dst[0] = '\0';
+
+  /* Default pad */
+  if (!pad || pad_len == 0) {
+    pad = " ";
+    pad_len = 1;
+  }
+
+  /* Count source graphemes */
+  size_t src_graphemes = src ? gstrlen(src, src_len) : 0;
+
+  /* If source is already wide enough, just copy it */
+  if (src_graphemes >= width) {
+    return src ? gstrcpy(dst, dst_size, src, src_len) : 0;
+  }
+
+  /* Calculate padding needed */
+  size_t pad_count = width - src_graphemes;
+  size_t written = 0;
+
+  /* Add left padding */
+  for (size_t i = 0; i < pad_count; i++) {
+    if (written + pad_len >= dst_size) {
+      break;
+    }
+    memcpy(dst + written, pad, pad_len);
+    written += pad_len;
+  }
+
+  /* Add source */
+  if (src && src_len > 0) {
+    size_t remaining = dst_size - written - 1;
+    if (remaining > 0) {
+      size_t to_copy = src_len;
+      if (to_copy > remaining) {
+        /* Find last complete grapheme that fits */
+        int offset = 0;
+        int last_complete = 0;
+        while ((size_t)offset < to_copy && (size_t)offset < remaining) {
+          int next = utf8_next_grapheme(src, (int)src_len, offset);
+          if ((size_t)next <= remaining) {
+            last_complete = next;
+          } else {
+            break;
+          }
+          offset = next;
+        }
+        to_copy = (size_t)last_complete;
+      }
+      memcpy(dst + written, src, to_copy);
+      written += to_copy;
+    }
+  }
+
+  dst[written] = '\0';
+  return written;
+}
+
+size_t gstrrpad(char *dst, size_t dst_size, const char *src, size_t src_len,
+                size_t width, const char *pad, size_t pad_len) {
+  if (!dst || dst_size == 0)
+    return 0;
+
+  dst[0] = '\0';
+
+  /* Default pad */
+  if (!pad || pad_len == 0) {
+    pad = " ";
+    pad_len = 1;
+  }
+
+  /* Count source graphemes */
+  size_t src_graphemes = src ? gstrlen(src, src_len) : 0;
+
+  /* If source is already wide enough, just copy it */
+  if (src_graphemes >= width) {
+    return src ? gstrcpy(dst, dst_size, src, src_len) : 0;
+  }
+
+  size_t written = 0;
+
+  /* Add source first */
+  if (src && src_len > 0) {
+    size_t to_copy = src_len;
+    if (to_copy >= dst_size) {
+      /* Find last complete grapheme that fits */
+      int offset = 0;
+      int last_complete = 0;
+      while ((size_t)offset < to_copy && (size_t)offset < dst_size - 1) {
+        int next = utf8_next_grapheme(src, (int)src_len, offset);
+        if ((size_t)next < dst_size) {
+          last_complete = next;
+        } else {
+          break;
+        }
+        offset = next;
+      }
+      to_copy = (size_t)last_complete;
+    }
+    memcpy(dst, src, to_copy);
+    written = to_copy;
+  }
+
+  /* Add right padding */
+  size_t pad_count = width - src_graphemes;
+  for (size_t i = 0; i < pad_count; i++) {
+    if (written + pad_len >= dst_size) {
+      break;
+    }
+    memcpy(dst + written, pad, pad_len);
+    written += pad_len;
+  }
+
+  dst[written] = '\0';
+  return written;
+}
+
+size_t gstrpad(char *dst, size_t dst_size, const char *src, size_t src_len,
+               size_t width, const char *pad, size_t pad_len) {
+  if (!dst || dst_size == 0)
+    return 0;
+
+  dst[0] = '\0';
+
+  /* Default pad */
+  if (!pad || pad_len == 0) {
+    pad = " ";
+    pad_len = 1;
+  }
+
+  /* Count source graphemes */
+  size_t src_graphemes = src ? gstrlen(src, src_len) : 0;
+
+  /* If source is already wide enough, just copy it */
+  if (src_graphemes >= width) {
+    return src ? gstrcpy(dst, dst_size, src, src_len) : 0;
+  }
+
+  /* Calculate padding needed */
+  size_t total_pad = width - src_graphemes;
+  size_t left_pad = total_pad / 2;
+  size_t right_pad = total_pad - left_pad;
+
+  size_t written = 0;
+
+  /* Add left padding */
+  for (size_t i = 0; i < left_pad; i++) {
+    if (written + pad_len >= dst_size) {
+      break;
+    }
+    memcpy(dst + written, pad, pad_len);
+    written += pad_len;
+  }
+
+  /* Add source */
+  if (src && src_len > 0) {
+    size_t remaining = dst_size - written - 1;
+    if (remaining > 0) {
+      size_t to_copy = src_len;
+      if (to_copy > remaining) {
+        int offset = 0;
+        int last_complete = 0;
+        while ((size_t)offset < to_copy && (size_t)offset < remaining) {
+          int next = utf8_next_grapheme(src, (int)src_len, offset);
+          if ((size_t)next <= remaining) {
+            last_complete = next;
+          } else {
+            break;
+          }
+          offset = next;
+        }
+        to_copy = (size_t)last_complete;
+      }
+      memcpy(dst + written, src, to_copy);
+      written += to_copy;
+    }
+  }
+
+  /* Add right padding */
+  for (size_t i = 0; i < right_pad; i++) {
+    if (written + pad_len >= dst_size) {
+      break;
+    }
+    memcpy(dst + written, pad, pad_len);
+    written += pad_len;
+  }
+
   dst[written] = '\0';
   return written;
 }

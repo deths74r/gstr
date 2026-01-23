@@ -7,7 +7,7 @@
  * - Real-world Unicode strings (multilingual)
  * - Complex emoji sequences
  * - Boundary conditions
- * - Comparison with utflite_grapheme_count
+ * - Grapheme count vs codepoint count invariants
  */
 
 #include <stdio.h>
@@ -19,7 +19,6 @@
 #include "gstr.h"
 #else
 #include <utflite/gstr.h>
-#include <utflite/utflite.h>
 #endif
 
 static int tests_passed = 0;
@@ -172,22 +171,23 @@ static void test_gstrlen_accuracy(void) {
 }
 
 /* ============================================================================
- * Test: gstrlen matches utflite_grapheme_count
+ * Test: gstrlen (graphemes) <= utf8_cpcount (codepoints)
  * ============================================================================
  */
-static void test_gstrlen_vs_utflite(void) {
-  printf("\n=== gstrlen vs utflite_grapheme_count ===\n");
+static void test_gstrlen_vs_cpcount(void) {
+  printf("\n=== gstrlen vs utf8_cpcount ===\n");
 
   for (int i = 0; TEST_STRINGS[i].name != NULL; i++) {
     struct test_string *t = &TEST_STRINGS[i];
-    size_t gstr_count = gstrlen(t->data, t->byte_len);
-    int utflite_count = utflite_grapheme_count(t->data, (int)t->byte_len);
+    size_t grapheme_count = gstrlen(t->data, t->byte_len);
+    int codepoint_count = utf8_cpcount(t->data, (int)t->byte_len);
 
-    if (gstr_count == (size_t)utflite_count) {
+    /* Grapheme count should always be <= codepoint count */
+    if (grapheme_count <= (size_t)codepoint_count && codepoint_count >= 0) {
       PASS();
     } else {
-      printf("  %-25s gstrlen=%zu, utflite=%d\n", t->name, gstr_count,
-             utflite_count);
+      printf("  %-25s graphemes=%zu, codepoints=%d\n", t->name, grapheme_count,
+             codepoint_count);
       FAIL(t->name);
     }
   }
@@ -566,7 +566,7 @@ int main(void) {
   printf("Version: %s\n", GSTR_VERSION);
 
   test_gstrlen_accuracy();
-  test_gstrlen_vs_utflite();
+  test_gstrlen_vs_cpcount();
   test_gstroff_consistency();
   test_gstrat_consistency();
   test_gstrsub_roundtrip();
