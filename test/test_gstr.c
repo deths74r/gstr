@@ -1,4 +1,7 @@
 /*
+ * SPDX-License-Identifier: MIT
+ * Copyright (c) 2025 Edward J Edmonds <edward.edmonds@gmail.com>
+ *
  * test_gstr.c - Unit tests for gstr grapheme string library
  */
 

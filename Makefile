@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2025 Edward J Edmonds <edward.edmonds@gmail.com>
+
 CC = clang
 CFLAGS = -Wall -Wextra -pedantic -std=c17 -O3
 CFLAGS_DEBUG = -Wall -Wextra -pedantic -std=c17 -g -O0

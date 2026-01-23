@@ -1,4 +1,7 @@
 /*
+ * SPDX-License-Identifier: MIT
+ * Copyright (c) 2025 Edward J Edmonds <edward.edmonds@gmail.com>
+ *
  * test_gstr_stress.c - Comprehensive stress tests for gstr library
  *
  * Tests:
