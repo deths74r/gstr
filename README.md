@@ -1,3 +1,8 @@
+<!--
+SPDX-License-Identifier: MIT
+Copyright (c) 2025 Edward J Edmonds <edward.edmonds@gmail.com>
+-->
+
 # gstr.h
 
 A single-header UTF-8 and grapheme string library for C. No dependencies, just drop it in and go.
