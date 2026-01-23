@@ -29,7 +29,7 @@ gstrlen("你好", 6);        // Returns 2 ✓
 gstrlen("👨‍👩‍👧", 18);        // Returns 1 ✓
 ```
 
-## gstr.h vs. The Competition
+## Feature Comparison
 
 | Feature | gstr.h | libgrapheme | utf8proc | libunistring | ICU |
 |---------|--------|-------------|----------|--------------|-----|
