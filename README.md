@@ -26,26 +26,20 @@ gstrlen("👨‍👩‍👧", 18);        // Returns 1 ✓
 
 ## Quick Start
 
-### Installation (Single Header)
+### Installation
 
-1. Copy `single_include/gstr.h` to your project
-2. In **one** .c file, define the implementation:
-
-```c
-#define GSTR_IMPLEMENTATION
-#include "gstr.h"
-```
-
-3. In all other files, just include normally:
+1. Copy `include/gstr.h` to your project
+2. Include it:
 
 ```c
 #include "gstr.h"
 ```
+
+That's it. All functions are `static inline` - no separate compilation needed.
 
 ### Your First Program
 
 ```c
-#define GSTR_IMPLEMENTATION
 #include "gstr.h"
 #include <stdio.h>
 
@@ -63,7 +57,6 @@ int main(void) {
 
 Compile: `gcc -o hello hello.c`
 
----
 
 ## Understanding the Basics
 
@@ -107,7 +100,6 @@ A grapheme cluster is what users perceive as a single character. Some examples:
 
 Most of the time, you'll use the `gstr*` functions.
 
----
 
 ## Tutorial: Working with Strings
 
@@ -497,7 +489,6 @@ const char *vowel = gstrpbrk(text, len, "aeiou", 5);
 printf("First vowel: %c\n", *vowel);  // 'a'
 ```
 
----
 
 ## Tutorial: Low-Level UTF-8 Operations
 
@@ -652,7 +643,6 @@ cut = utf8_truncate(text, len, 6);
 printf("Truncated: %.*s\n", cut, text);  // "Hello" (only 5 cols fit)
 ```
 
----
 
 ## Complete Function Reference
 
@@ -663,7 +653,6 @@ printf("Truncated: %.*s\n", cut, text);  // "Hello" (only 5 cols fit)
 #define UTF8_MAX_BYTES         4        // Maximum bytes per codepoint
 ```
 
----
 
 ### UTF-8 Layer (14 functions)
 
@@ -705,7 +694,6 @@ printf("Truncated: %.*s\n", cut, text);  // "Hello" (only 5 cols fit)
 | `utf8_is_wide(codepoint)` | Returns 1 if codepoint is double-width (CJK, emoji). |
 | `utf8_truncate(text, len, max_cols)` | Byte offset to truncate at max display width. |
 
----
 
 ### Grapheme String Layer (42 functions)
 
@@ -726,7 +714,6 @@ size_t gstrwidth(const char *s, size_t byte_len);
 ```
 Calculate display width in terminal columns.
 
----
 
 #### Indexing Functions
 
@@ -740,7 +727,6 @@ const char *gstrat(const char *s, size_t byte_len, size_t grapheme_n, size_t *ou
 ```
 Get pointer to Nth grapheme. Stores grapheme's byte length in `out_len`.
 
----
 
 #### Comparison Functions
 
@@ -764,7 +750,6 @@ int gstrncasecmp(const char *a, size_t a_len, const char *b, size_t b_len, size_
 ```
 Case-insensitive compare of first N graphemes.
 
----
 
 #### Prefix/Suffix Functions
 
@@ -778,7 +763,6 @@ int gstrendswith(const char *s, size_t s_len, const char *suffix, size_t suffix_
 ```
 Returns 1 if string ends with suffix, 0 otherwise.
 
----
 
 #### Search Functions
 
@@ -812,7 +796,6 @@ size_t gstrcount(const char *s, size_t len, const char *needle, size_t n_len);
 ```
 Count non-overlapping occurrences of needle.
 
----
 
 #### Span Functions
 
@@ -831,7 +814,6 @@ const char *gstrpbrk(const char *s, size_t len, const char *accept, size_t a_len
 ```
 Find first grapheme that is in accept set. Returns pointer or NULL.
 
----
 
 #### Extraction Functions
 
@@ -841,7 +823,6 @@ size_t gstrsub(char *dst, size_t dst_size, const char *src, size_t src_len,
 ```
 Extract `count` graphemes starting at `start_grapheme` into dst. Returns bytes written (excluding null terminator).
 
----
 
 #### Copy Functions
 
@@ -855,7 +836,6 @@ size_t gstrncpy(char *dst, size_t dst_size, const char *src, size_t src_len, siz
 ```
 Copy up to N graphemes to dst. Returns bytes written.
 
----
 
 #### Concatenation Functions
 
@@ -869,7 +849,6 @@ size_t gstrncat(char *dst, size_t dst_size, const char *src, size_t src_len, siz
 ```
 Append up to N graphemes from src to dst. Returns total bytes in dst.
 
----
 
 #### Allocation Functions
 
@@ -883,7 +862,6 @@ char *gstrndup(const char *s, size_t len, size_t n);
 ```
 Duplicate first N graphemes. Returns malloc'd copy (caller must free).
 
----
 
 #### Tokenization Functions
 
@@ -893,7 +871,6 @@ const char *gstrsep(const char **stringp, size_t *lenp, const char *delim,
 ```
 Extract next token from string, updating `*stringp` and `*lenp`. Stores token length in `tok_len`. Returns pointer to token or NULL when done.
 
----
 
 #### Trimming Functions
 
@@ -912,7 +889,6 @@ size_t gstrtrim(char *dst, size_t dst_size, const char *src, size_t src_len);
 ```
 Copy src to dst, removing leading and trailing ASCII whitespace. Returns bytes written.
 
----
 
 #### Transformation Functions
 
@@ -927,7 +903,6 @@ size_t gstrreplace(char *dst, size_t dst_size, const char *src, size_t src_len,
 ```
 Replace all occurrences of `old` with `new_str`. Returns bytes written.
 
----
 
 #### Case Conversion Functions
 
@@ -941,7 +916,6 @@ size_t gstrupper(char *dst, size_t dst_size, const char *src, size_t src_len);
 ```
 Convert ASCII letters to uppercase. Returns bytes written.
 
----
 
 #### Display/Truncation Functions
 
@@ -951,7 +925,6 @@ size_t gstrellipsis(char *dst, size_t dst_size, const char *src, size_t src_len,
 ```
 Truncate to max_graphemes and append ellipsis if truncated. Returns bytes written.
 
----
 
 #### Fill/Padding Functions
 
@@ -978,7 +951,6 @@ size_t gstrpad(char *dst, size_t dst_size, const char *src, size_t src_len,
 ```
 Center string by padding both sides. Returns bytes written.
 
----
 
 ## Building from Source
 
@@ -1003,7 +975,6 @@ After `make install`:
 
 Compile with: `gcc -o myprogram myprogram.c -lgstr`
 
----
 
 ## FAQ
 
@@ -1040,13 +1011,11 @@ It does **not** handle:
 
 Yes. All functions are pure (no global state) and only read from their inputs.
 
----
 
 ## License
 
 MIT License. See LICENSE file.
 
----
 
 ## Version History
 

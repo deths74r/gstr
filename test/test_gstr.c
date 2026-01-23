@@ -7,12 +7,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#ifdef GSTR_SINGLE_HEADER
-#define GSTR_IMPLEMENTATION
-#include "gstr.h"
-#else
 #include <gstr.h>
-#endif
 
 static int tests_passed = 0;
 static int tests_failed = 0;
