@@ -35,7 +35,7 @@ gstrlen("👨‍👩‍👧", 18);        // Returns 1 ✓
 |---------|--------|-------------|----------|--------------|-----|
 | **Integration** | `#include` | Build + link | Build + link | Build + link | Build + link |
 | **Files** | 1 | ~15 | ~10 | ~100+ | 1000+ |
-| **Binary size** | 0 (header) | ~30KB | ~300KB | ~2MB | ~38MB |
+| **Binary size** | 0* | ~30KB | ~300KB | ~2MB | ~38MB |
 | **Unicode version** | 17.0 | 15.0 | 16.0 | 16.0 | 16.0 |
 | **Language** | C99 | C99 | C99 | C99 | C/C++ |
 | **High-level string API** | ✅ | ❌ | ❌ | Partial | ✅ |
@@ -44,6 +44,8 @@ gstrlen("👨‍👩‍👧", 18);        // Returns 1 ✓
 | **Terminal-width padding** | ✅ | ❌ | ❌ | ❌ | ❌ |
 | **Dependencies** | None | None | None | libc | libc++ |
 | **Freestanding** | ✅ | ✅ | ❌ | ❌ | ❌ |
+
+*\* Header-only with `static inline` functions - no library binary. Compiler emits only the functions you call; unused code is eliminated.*
 
 ## Quick Start
 
