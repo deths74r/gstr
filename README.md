@@ -140,6 +140,19 @@ printf("Width: %zu columns\n", width);  // 9 (5 + 2 + 2)
 // ASCII = 1 column each, Chinese = 2 columns each
 ```
 
+**Emoji handling:**
+
+```c
+// ZWJ sequences (family emoji) = 2 columns
+printf("%zu\n", gstrwidth("👨‍👩‍👧", 18));  // 2
+
+// Flag emoji = 2 columns  
+printf("%zu\n", gstrwidth("🇨🇦", 8));     // 2
+
+// Emoji with skin tone = 2 columns
+printf("%zu\n", gstrwidth("👋🏽", 8));    // 2
+```
+
 ### Accessing Individual Characters
 
 **Problem:** Get the 3rd character of a string.
@@ -412,6 +425,44 @@ printf("[%s]\n", buffer);  // "[        Hi]"
 // Center
 gstrpad(buffer, sizeof(buffer), "Hi", 2, 10, " ", 1);
 printf("[%s]\n", buffer);  // "[    Hi    ]"
+```
+
+### Padding by Terminal Width
+
+**Problem:** Pad strings with wide characters (CJK, emoji) to exact column width.
+
+The `gstrlpad`/`gstrrpad`/`gstrpad` functions pad to a **grapheme count**. But when displaying CJK or emoji, you often need to pad to a **column width** instead:
+
+```c
+char buffer[64];
+
+// Problem: CJK characters are 2 columns wide
+const char *cjk = "日本";  // 2 graphemes, but 4 columns!
+gstrrpad(buffer, sizeof(buffer), cjk, 6, 10, " ", 1);
+// Result: "日本        " - 8 spaces added (wrong!)
+
+// Solution: Use column-width-aware padding
+gstrwrpad(buffer, sizeof(buffer), cjk, 6, 10, " ", 1);
+// Result: "日本      " - 6 spaces added (correct: 4+6=10 columns)
+```
+
+**Truncate to fit terminal width:**
+
+```c
+const char *text = "Hello世界!";  // 5 + 4 + 1 = 10 columns
+size_t bytes = strlen(text);
+
+// Truncate to 8 columns
+size_t written = gstrwtrunc(buffer, sizeof(buffer), text, bytes, 8);
+printf("%s\n", buffer);  // "Hello世" (5+2=7, can't fit next char)
+```
+
+**Center with emoji:**
+
+```c
+const char *emoji = "👋";  // 1 grapheme, 2 columns
+gstrwpad(buffer, sizeof(buffer), emoji, 4, 10, "-", 1);
+printf("[%s]\n", buffer);  // "[----👋----]" (4+2+4=10 columns)
 ```
 
 ### Filling with Characters
@@ -695,7 +746,7 @@ printf("Truncated: %.*s\n", cut, text);  // "Hello" (only 5 cols fit)
 | `utf8_truncate(text, len, max_cols)` | Byte offset to truncate at max display width. |
 
 
-### Grapheme String Layer (42 functions)
+### Grapheme String Layer (46 functions)
 
 #### Length Functions
 
@@ -950,6 +1001,35 @@ size_t gstrpad(char *dst, size_t dst_size, const char *src, size_t src_len,
                size_t width, const char *pad, size_t pad_len);
 ```
 Center string by padding both sides. Returns bytes written.
+
+
+#### Column-Width-Aware Functions
+
+These functions work like their grapheme-count counterparts, but use **terminal column width** instead. Essential for proper alignment with CJK characters and emoji.
+
+```c
+size_t gstrwtrunc(char *dst, size_t dst_size, const char *src, size_t src_len,
+                  size_t max_cols);
+```
+Truncate string to fit within `max_cols` terminal columns, preserving grapheme boundaries. Returns bytes written.
+
+```c
+size_t gstrwlpad(char *dst, size_t dst_size, const char *src, size_t src_len,
+                 size_t target_cols, const char *pad, size_t pad_len);
+```
+Left-pad string to reach `target_cols` terminal columns. Returns bytes written.
+
+```c
+size_t gstrwrpad(char *dst, size_t dst_size, const char *src, size_t src_len,
+                 size_t target_cols, const char *pad, size_t pad_len);
+```
+Right-pad string to reach `target_cols` terminal columns. Returns bytes written.
+
+```c
+size_t gstrwpad(char *dst, size_t dst_size, const char *src, size_t src_len,
+                size_t target_cols, const char *pad, size_t pad_len);
+```
+Center string by padding both sides to reach `target_cols` terminal columns. Returns bytes written.
 
 
 ## Building from Source
