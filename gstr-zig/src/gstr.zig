@@ -1164,3 +1164,700 @@ test "combining characters - café" {
     const cafe = "cafe\u{0301}"; // café with combining accent
     try std.testing.expectEqual(@as(usize, 4), len(cafe)); // 4 graphemes: c, a, f, é
 }
+// ============================================================================
+// Comprehensive Edge Case Tests
+// ============================================================================
+// --- Empty String Tests ---
+test "len - empty string" {
+    try std.testing.expectEqual(@as(usize, 0), len(""));
+}
+test "width - empty string" {
+    try std.testing.expectEqual(@as(usize, 0), width(""));
+}
+test "at - empty string" {
+    try std.testing.expectEqual(@as(?[]const u8, null), at("", 0));
+}
+test "graphemes iterator - empty string" {
+    var iter = graphemes("");
+    try std.testing.expectEqual(@as(?[]const u8, null), iter.next());
+}
+test "reverse - empty string" {
+    const allocator = std.testing.allocator;
+    const result = try reverse(allocator, "");
+    defer allocator.free(result);
+    try std.testing.expectEqualStrings("", result);
+}
+test "trim - empty string" {
+    const allocator = std.testing.allocator;
+    const result = try trim(allocator, "");
+    defer allocator.free(result);
+    try std.testing.expectEqualStrings("", result);
+}
+test "trim - only whitespace" {
+    const allocator = std.testing.allocator;
+    const result = try trim(allocator, "   \t\n  ");
+    defer allocator.free(result);
+    try std.testing.expectEqualStrings("", result);
+}
+// --- Flag Emoji Tests ---
+test "len - flag emoji" {
+    // 🇨🇦 (Canada flag) = 1 grapheme
+    try std.testing.expectEqual(@as(usize, 1), len("🇨🇦"));
+}
+test "width - flag emoji" {
+    // Flag emoji = 2 columns wide
+    try std.testing.expectEqual(@as(usize, 2), width("🇨🇦"));
+}
+test "at - flag emoji" {
+    try std.testing.expectEqualStrings("🇨🇦", at("🇨🇦", 0).?);
+    try std.testing.expectEqual(@as(?[]const u8, null), at("🇨🇦", 1));
+}
+test "graphemes iterator - flag emoji" {
+    var iter = graphemes("🇨🇦");
+    const flag = iter.next().?;
+    try std.testing.expectEqual(@as(usize, 8), flag.len); // Flag is 8 bytes (2 regional indicators)
+    try std.testing.expectEqual(@as(?[]const u8, null), iter.next());
+}
+// --- Skin Tone Emoji Tests ---
+test "len - skin tone emoji" {
+    // 👋🏽 (waving hand with skin tone) = 1 grapheme
+    try std.testing.expectEqual(@as(usize, 1), len("👋🏽"));
+}
+test "width - skin tone emoji" {
+    try std.testing.expectEqual(@as(usize, 2), width("👋🏽"));
+}
+// --- Multiple ZWJ Sequences ---
+test "len - multiple ZWJ sequences" {
+    // Two separate ZWJ family emojis
+    try std.testing.expectEqual(@as(usize, 2), len("👨‍👩‍👧👨‍👩‍👧"));
+}
+test "len - ZWJ profession" {
+    // 👩‍💻 (woman technologist) = 1 grapheme
+    try std.testing.expectEqual(@as(usize, 1), len("👩‍💻"));
+}
+// --- Devanagari Tests ---
+test "len - devanagari" {
+    // नमस्ते (namaste) - complex conjuncts
+    const namaste = "नमस्ते";
+    const grapheme_count = len(namaste);
+    // Devanagari has complex grapheme clustering - gstr returns 3
+    try std.testing.expectEqual(@as(usize, 3), grapheme_count);
+}
+test "width - devanagari" {
+    const namaste = "नमस्ते";
+    const w = width(namaste);
+    // Each grapheme cluster should be 1 column (non-CJK script)
+    try std.testing.expect(w >= 4 and w <= 6);
+}
+// --- Korean Tests ---
+test "len - korean" {
+    // 한글 = 2 graphemes (each syllable is one grapheme)
+    try std.testing.expectEqual(@as(usize, 2), len("한글"));
+}
+test "width - korean" {
+    // Korean syllables are 2 columns wide each
+    try std.testing.expectEqual(@as(usize, 4), width("한글"));
+}
+// --- Comparison Edge Cases ---
+test "cmp - empty strings" {
+    try std.testing.expectEqual(Order.equal, cmp("", ""));
+}
+test "cmp - empty vs non-empty" {
+    try std.testing.expectEqual(Order.less, cmp("", "a"));
+    try std.testing.expectEqual(Order.greater, cmp("a", ""));
+}
+test "cmp - unicode" {
+    try std.testing.expectEqual(Order.equal, cmp("世界", "世界"));
+    try std.testing.expectEqual(Order.less, cmp("世", "界"));
+}
+test "ncmp - partial comparison" {
+    try std.testing.expectEqual(Order.equal, ncmp("Hello World", "Hello There", 5));
+    // At 6 graphemes: "Hello " vs "Hello " - still equal
+    try std.testing.expectEqual(Order.equal, ncmp("Hello World", "Hello There", 6));
+    // At 7 graphemes: "Hello W" vs "Hello T" - W > T
+    try std.testing.expectEqual(Order.greater, ncmp("Hello World", "Hello There", 7));
+}
+test "ncmp - n greater than length" {
+    try std.testing.expectEqual(Order.equal, ncmp("Hi", "Hi", 100));
+}
+test "ncmp - zero n" {
+    try std.testing.expectEqual(Order.equal, ncmp("abc", "xyz", 0));
+}
+test "caseCmp - basic" {
+    try std.testing.expectEqual(Order.equal, caseCmp("Hello", "hello"));
+    try std.testing.expectEqual(Order.equal, caseCmp("HELLO", "hello"));
+}
+test "caseCmp - non-ascii preserved" {
+    // Case insensitive only works for ASCII
+    try std.testing.expect(caseCmp("Ä", "ä") != Order.equal);
+}
+test "nCaseCmp - partial" {
+    try std.testing.expectEqual(Order.equal, nCaseCmp("HELLO World", "hello THERE", 5));
+}
+// --- Search Edge Cases ---
+test "chr - not found" {
+    try std.testing.expectEqual(@as(?usize, null), chr("hello", "x"));
+}
+test "chr - empty haystack" {
+    try std.testing.expectEqual(@as(?usize, null), chr("", "a"));
+}
+test "chr - multibyte grapheme" {
+    try std.testing.expectEqual(@as(?usize, 6), chr("Hello 世界", "世"));
+}
+test "rchr - multiple occurrences" {
+    try std.testing.expectEqual(@as(?usize, 9), rchr("Hello Hello", "l"));
+}
+test "str - substring" {
+    try std.testing.expectEqual(@as(?usize, 0), str("Hello World", "Hello"));
+    try std.testing.expectEqual(@as(?usize, 6), str("Hello World", "World"));
+}
+test "str - empty needle" {
+    const result = str("Hello", "");
+    try std.testing.expectEqual(@as(?usize, 0), result);
+}
+test "str - not found" {
+    try std.testing.expectEqual(@as(?usize, null), str("Hello", "xyz"));
+}
+test "rstr - last occurrence" {
+    try std.testing.expectEqual(@as(?usize, 6), rstr("Hello Hello", "Hello"));
+}
+test "caseStr - case insensitive" {
+    try std.testing.expectEqual(@as(?usize, 0), caseStr("Hello World", "HELLO"));
+    try std.testing.expectEqual(@as(?usize, 6), caseStr("Hello World", "WORLD"));
+}
+// --- Count Tests ---
+test "count - basic" {
+    try std.testing.expectEqual(@as(usize, 3), count("ababab", "ab"));
+}
+test "count - non-overlapping" {
+    // "aaa" with "aa": finds first "aa", leaves "a" - only 1 match
+    try std.testing.expectEqual(@as(usize, 1), count("aaa", "aa"));
+    // "aaaa" with "aa": finds "aa", then another "aa" - 2 matches
+    try std.testing.expectEqual(@as(usize, 2), count("aaaa", "aa"));
+}
+test "count - not found" {
+    try std.testing.expectEqual(@as(usize, 0), count("hello", "xyz"));
+}
+test "count - empty needle" {
+    // Empty needle behavior varies by implementation
+    const cnt = count("hello", "");
+    try std.testing.expect(cnt == 0 or cnt == 6); // Either 0 or grapheme_count + 1
+}
+// --- Span Tests ---
+test "span - all match" {
+    try std.testing.expectEqual(@as(usize, 6), span("aaabbb", "ab"));
+}
+test "span - no match" {
+    try std.testing.expectEqual(@as(usize, 0), span("hello", "xyz"));
+}
+test "cspan - all rejected" {
+    try std.testing.expectEqual(@as(usize, 0), cspan("hello", "h"));
+}
+test "cspan - none rejected" {
+    try std.testing.expectEqual(@as(usize, 5), cspan("hello", "xyz"));
+}
+test "pbrk - basic" {
+    try std.testing.expectEqual(@as(?usize, 2), pbrk("hello", "lo"));
+}
+test "pbrk - not found" {
+    try std.testing.expectEqual(@as(?usize, null), pbrk("hello", "xyz"));
+}
+// --- Offset Tests ---
+test "offset - basic" {
+    const s = "Hello 世界";
+    try std.testing.expectEqual(@as(usize, 0), offset(s, 0));
+    try std.testing.expectEqual(@as(usize, 1), offset(s, 1)); // 'e'
+    try std.testing.expectEqual(@as(usize, 6), offset(s, 6)); // start of '世'
+    try std.testing.expectEqual(@as(usize, 9), offset(s, 7)); // start of '界'
+}
+test "offset - past end" {
+    try std.testing.expectEqual(@as(usize, 5), offset("Hello", 100));
+}
+// --- Substring Tests ---
+test "sub - basic" {
+    const allocator = std.testing.allocator;
+    const result = try sub(allocator, "Hello World", 6, 5);
+    defer allocator.free(result);
+    try std.testing.expectEqualStrings("World", result);
+}
+test "sub - multibyte" {
+    const allocator = std.testing.allocator;
+    const result = try sub(allocator, "Hello 世界", 6, 2);
+    defer allocator.free(result);
+    try std.testing.expectEqualStrings("世界", result);
+}
+test "sub - past end" {
+    const allocator = std.testing.allocator;
+    const result = try sub(allocator, "Hello", 10, 5);
+    defer allocator.free(result);
+    try std.testing.expectEqualStrings("", result);
+}
+test "sub - zero count" {
+    const allocator = std.testing.allocator;
+    const result = try sub(allocator, "Hello", 0, 0);
+    defer allocator.free(result);
+    try std.testing.expectEqualStrings("", result);
+}
+// --- Copy Tests ---
+test "copy - basic" {
+    const allocator = std.testing.allocator;
+    const result = try copy(allocator, "Hello");
+    defer allocator.free(result);
+    try std.testing.expectEqualStrings("Hello", result);
+}
+test "copy - empty" {
+    const allocator = std.testing.allocator;
+    const result = try copy(allocator, "");
+    defer allocator.free(result);
+    try std.testing.expectEqualStrings("", result);
+}
+test "ncopy - basic" {
+    const allocator = std.testing.allocator;
+    const result = try ncopy(allocator, "Hello World", 5);
+    defer allocator.free(result);
+    try std.testing.expectEqualStrings("Hello", result);
+}
+test "ncopy - multibyte" {
+    const allocator = std.testing.allocator;
+    const result = try ncopy(allocator, "世界Hello", 2);
+    defer allocator.free(result);
+    try std.testing.expectEqualStrings("世界", result);
+}
+// --- Concatenation Tests ---
+test "cat - basic" {
+    const allocator = std.testing.allocator;
+    const result = try cat(allocator, "Hello", " World");
+    defer allocator.free(result);
+    try std.testing.expectEqualStrings("Hello World", result);
+}
+test "cat - empty strings" {
+    const allocator = std.testing.allocator;
+    const result = try cat(allocator, "", "");
+    defer allocator.free(result);
+    try std.testing.expectEqualStrings("", result);
+}
+test "ncat - basic" {
+    const allocator = std.testing.allocator;
+    const result = try ncat(allocator, "Hello", " World!", 6);
+    defer allocator.free(result);
+    try std.testing.expectEqualStrings("Hello World", result);
+}
+// --- Replace Tests ---
+test "replace - basic" {
+    const allocator = std.testing.allocator;
+    const result = try replace(allocator, "Hello World", "World", "Zig");
+    defer allocator.free(result);
+    try std.testing.expectEqualStrings("Hello Zig", result);
+}
+test "replace - multiple occurrences" {
+    const allocator = std.testing.allocator;
+    const result = try replace(allocator, "abcabc", "abc", "x");
+    defer allocator.free(result);
+    try std.testing.expectEqualStrings("xx", result);
+}
+test "replace - no match" {
+    const allocator = std.testing.allocator;
+    const result = try replace(allocator, "Hello", "xyz", "abc");
+    defer allocator.free(result);
+    try std.testing.expectEqualStrings("Hello", result);
+}
+test "replace - empty old" {
+    const allocator = std.testing.allocator;
+    const result = try replace(allocator, "Hello", "", "x");
+    defer allocator.free(result);
+    try std.testing.expectEqualStrings("Hello", result);
+}
+test "replace - unicode" {
+    const allocator = std.testing.allocator;
+    const result = try replace(allocator, "Hello 世界", "世界", "World");
+    defer allocator.free(result);
+    try std.testing.expectEqualStrings("Hello World", result);
+}
+// --- Ellipsis Edge Cases ---
+test "ellipsis - no truncation needed" {
+    const allocator = std.testing.allocator;
+    const result = try ellipsis(allocator, "Hi", 10, "...");
+    defer allocator.free(result);
+    try std.testing.expectEqualStrings("Hi", result);
+}
+test "ellipsis - exact fit" {
+    const allocator = std.testing.allocator;
+    const result = try ellipsis(allocator, "Hello", 5, "...");
+    defer allocator.free(result);
+    try std.testing.expectEqualStrings("Hello", result);
+}
+test "ellipsis - max less than suffix" {
+    const allocator = std.testing.allocator;
+    const result = try ellipsis(allocator, "Hello World", 2, "...");
+    defer allocator.free(result);
+    try std.testing.expectEqualStrings("..", result);
+}
+test "ellipsis - unicode" {
+    const allocator = std.testing.allocator;
+    const result = try ellipsis(allocator, "世界Hello", 5, "...");
+    defer allocator.free(result);
+    try std.testing.expectEqualStrings("世界...", result);
+}
+// --- Width-based Padding Tests ---
+test "wlpad - basic" {
+    const allocator = std.testing.allocator;
+    const result = try wlpad(allocator, "Hi", 6, " ");
+    defer allocator.free(result);
+    try std.testing.expectEqualStrings("    Hi", result);
+}
+test "wrpad - basic" {
+    const allocator = std.testing.allocator;
+    const result = try wrpad(allocator, "Hi", 6, " ");
+    defer allocator.free(result);
+    try std.testing.expectEqualStrings("Hi    ", result);
+}
+test "wpad - center" {
+    const allocator = std.testing.allocator;
+    const result = try wpad(allocator, "Hi", 6, " ");
+    defer allocator.free(result);
+    try std.testing.expectEqualStrings("  Hi  ", result);
+}
+test "wlpad - with wide chars" {
+    const allocator = std.testing.allocator;
+    // "世" is 2 columns, so to reach 6 cols we need 4 spaces
+    const result = try wlpad(allocator, "世", 6, " ");
+    defer allocator.free(result);
+    try std.testing.expectEqual(@as(usize, 6), width(result));
+}
+test "wtrunc - basic" {
+    const allocator = std.testing.allocator;
+    const result = try wtrunc(allocator, "Hello World", 5);
+    defer allocator.free(result);
+    try std.testing.expectEqualStrings("Hello", result);
+}
+test "wtrunc - wide chars" {
+    const allocator = std.testing.allocator;
+    // "世界" is 4 columns, truncate to 3 should give just "世" (can't include half of 界)
+    const result = try wtrunc(allocator, "世界", 3);
+    defer allocator.free(result);
+    try std.testing.expectEqualStrings("世", result);
+}
+test "wtrunc - zero cols" {
+    const allocator = std.testing.allocator;
+    const result = try wtrunc(allocator, "Hello", 0);
+    defer allocator.free(result);
+    try std.testing.expectEqualStrings("", result);
+}
+// --- UTF-8 Function Tests ---
+test "decode - ASCII" {
+    const result = decode("A");
+    try std.testing.expectEqual(@as(u32, 'A'), result.codepoint);
+    try std.testing.expectEqual(@as(usize, 1), result.len);
+}
+test "decode - 2 byte" {
+    const result = decode("é");
+    try std.testing.expectEqual(@as(u32, 0xE9), result.codepoint);
+    try std.testing.expectEqual(@as(usize, 2), result.len);
+}
+test "decode - 3 byte" {
+    const result = decode("世");
+    try std.testing.expectEqual(@as(u32, 0x4E16), result.codepoint);
+    try std.testing.expectEqual(@as(usize, 3), result.len);
+}
+test "decode - 4 byte emoji" {
+    const result = decode("😀");
+    try std.testing.expectEqual(@as(u32, 0x1F600), result.codepoint);
+    try std.testing.expectEqual(@as(usize, 4), result.len);
+}
+test "encode - ASCII" {
+    const result = encode('A');
+    try std.testing.expectEqual(@as(usize, 1), result.len);
+    try std.testing.expectEqual(@as(u8, 'A'), result.bytes[0]);
+}
+test "encode - 2 byte" {
+    const result = encode(0xE9); // é
+    try std.testing.expectEqual(@as(usize, 2), result.len);
+}
+test "encode - 4 byte" {
+    const result = encode(0x1F600); // 😀
+    try std.testing.expectEqual(@as(usize, 4), result.len);
+}
+test "encode-decode roundtrip" {
+    const codepoints = [_]u32{ 'A', 0xE9, 0x4E16, 0x1F600 };
+    for (codepoints) |cp| {
+        const encoded = encode(cp);
+        const decoded = decode(encoded.bytes[0..encoded.len]);
+        try std.testing.expectEqual(cp, decoded.codepoint);
+    }
+}
+test "valid - empty string" {
+    try std.testing.expect(valid("").valid);
+}
+test "valid - various unicode" {
+    try std.testing.expect(valid("ASCII").valid);
+    try std.testing.expect(valid("日本語").valid);
+    try std.testing.expect(valid("👨‍👩‍👧‍👦").valid);
+    try std.testing.expect(valid("مرحبا").valid); // Arabic
+}
+test "valid - invalid sequences" {
+    // Overlong encoding
+    const overlong = [_]u8{ 0xC0, 0x80 };
+    try std.testing.expect(!valid(&overlong).valid);
+    // Invalid continuation
+    const bad_cont = [_]u8{ 0xE0, 0x80 };
+    try std.testing.expect(!valid(&bad_cont).valid);
+    // Truncated sequence
+    const truncated = [_]u8{ 0xE4, 0xB8 };
+    try std.testing.expect(!valid(&truncated).valid);
+}
+test "cpWidth - ASCII" {
+    try std.testing.expectEqual(@as(usize, 1), cpWidth('A'));
+    try std.testing.expectEqual(@as(usize, 1), cpWidth(' '));
+}
+test "cpWidth - wide chars" {
+    try std.testing.expectEqual(@as(usize, 2), cpWidth(0x4E16)); // 世
+    try std.testing.expectEqual(@as(usize, 2), cpWidth(0xAC00)); // 가 (Korean)
+}
+test "cpWidth - zero width" {
+    try std.testing.expectEqual(@as(usize, 0), cpWidth(0x0301)); // Combining acute
+    try std.testing.expectEqual(@as(usize, 0), cpWidth(0x200D)); // ZWJ
+}
+test "isZeroWidth" {
+    try std.testing.expect(isZeroWidth(0x0301)); // Combining acute
+    try std.testing.expect(isZeroWidth(0x200D)); // ZWJ
+    try std.testing.expect(!isZeroWidth('A'));
+}
+test "isWide" {
+    try std.testing.expect(isWide(0x4E16)); // 世
+    try std.testing.expect(isWide(0xAC00)); // 가
+    try std.testing.expect(!isWide('A'));
+}
+test "next and prev - ASCII" {
+    const s = "Hello";
+    try std.testing.expectEqual(@as(usize, 1), next(s, 0));
+    try std.testing.expectEqual(@as(usize, 2), next(s, 1));
+    try std.testing.expectEqual(@as(usize, 0), prev(s, 1));
+}
+test "next and prev - multibyte" {
+    const s = "世界";
+    try std.testing.expectEqual(@as(usize, 3), next(s, 0)); // 世 is 3 bytes
+    try std.testing.expectEqual(@as(usize, 6), next(s, 3)); // 界 is 3 bytes
+    try std.testing.expectEqual(@as(usize, 0), prev(s, 3));
+    try std.testing.expectEqual(@as(usize, 3), prev(s, 6));
+}
+test "nextGrapheme and prevGrapheme" {
+    const s = "👨‍👩‍👧"; // ZWJ family - 18 bytes, 1 grapheme
+    try std.testing.expectEqual(@as(usize, 18), nextGrapheme(s, 0));
+    try std.testing.expectEqual(@as(usize, 0), prevGrapheme(s, 18));
+}
+test "cpCount" {
+    try std.testing.expectEqual(@as(usize, 5), cpCount("Hello"));
+    try std.testing.expectEqual(@as(usize, 2), cpCount("世界"));
+    // ZWJ family has multiple codepoints but 1 grapheme
+    try std.testing.expect(cpCount("👨‍👩‍👧") > 1);
+}
+test "truncate - columns" {
+    const s = "Hello World";
+    try std.testing.expectEqual(@as(usize, 5), truncate(s, 5)); // "Hello"
+}
+test "truncate - wide chars" {
+    const s = "世界";
+    try std.testing.expectEqual(@as(usize, 3), truncate(s, 2)); // Just "世"
+    try std.testing.expectEqual(@as(usize, 3), truncate(s, 3)); // Still just "世" (can't fit half of 界)
+}
+// --- Sep Iterator Edge Cases ---
+test "sep - empty string" {
+    var iter = sep("", ",");
+    // Empty string returns null immediately
+    try std.testing.expectEqual(@as(?[]const u8, null), iter.next());
+}
+test "sep - no delimiter found" {
+    var iter = sep("hello", ",");
+    try std.testing.expectEqualStrings("hello", iter.next().?);
+    try std.testing.expectEqual(@as(?[]const u8, null), iter.next());
+}
+test "sep - consecutive delimiters" {
+    var iter = sep("a,,b", ",");
+    try std.testing.expectEqualStrings("a", iter.next().?);
+    try std.testing.expectEqualStrings("", iter.next().?);
+    try std.testing.expectEqualStrings("b", iter.next().?);
+    try std.testing.expectEqual(@as(?[]const u8, null), iter.next());
+}
+test "sep - unicode delimiter" {
+    var iter = sep("a世b", "世");
+    try std.testing.expectEqualStrings("a", iter.next().?);
+    try std.testing.expectEqualStrings("b", iter.next().?);
+    try std.testing.expectEqual(@as(?[]const u8, null), iter.next());
+}
+// --- Grapheme Iterator Edge Cases ---
+test "graphemes iterator - peek" {
+    var iter = graphemes("AB");
+    try std.testing.expectEqualStrings("A", iter.peek().?);
+    try std.testing.expectEqualStrings("A", iter.next().?); // Still A
+    try std.testing.expectEqualStrings("B", iter.peek().?);
+    try std.testing.expectEqualStrings("B", iter.next().?);
+    try std.testing.expectEqual(@as(?[]const u8, null), iter.peek());
+}
+test "graphemes iterator - reset" {
+    var iter = graphemes("AB");
+    _ = iter.next();
+    _ = iter.next();
+    iter.reset();
+    try std.testing.expectEqualStrings("A", iter.next().?);
+}
+test "graphemes iterator - rest" {
+    var iter = graphemes("Hello");
+    _ = iter.next();
+    _ = iter.next();
+    try std.testing.expectEqualStrings("llo", iter.rest());
+}
+// --- Prefix/Suffix Edge Cases ---
+test "startsWith - empty prefix" {
+    try std.testing.expect(startsWith("Hello", ""));
+}
+test "startsWith - empty string" {
+    try std.testing.expect(!startsWith("", "Hello"));
+    try std.testing.expect(startsWith("", ""));
+}
+test "startsWith - unicode" {
+    try std.testing.expect(startsWith("世界Hello", "世界"));
+    try std.testing.expect(!startsWith("Hello世界", "世界"));
+}
+test "endsWith - empty suffix" {
+    try std.testing.expect(endsWith("Hello", ""));
+}
+test "endsWith - empty string" {
+    try std.testing.expect(!endsWith("", "Hello"));
+    try std.testing.expect(endsWith("", ""));
+}
+test "endsWith - unicode" {
+    try std.testing.expect(endsWith("Hello世界", "世界"));
+    try std.testing.expect(!endsWith("世界Hello", "世界"));
+}
+// --- nlen Tests ---
+test "nlen - basic" {
+    try std.testing.expectEqual(@as(usize, 3), nlen("Hello", 3));
+    try std.testing.expectEqual(@as(usize, 5), nlen("Hello", 10));
+}
+test "nlen - zero" {
+    try std.testing.expectEqual(@as(usize, 0), nlen("Hello", 0));
+}
+test "nlen - unicode" {
+    try std.testing.expectEqual(@as(usize, 1), nlen("世界", 1));
+    try std.testing.expectEqual(@as(usize, 2), nlen("世界", 5));
+}
+// --- Combining Character Tests ---
+test "len - combining acute" {
+    // e + combining acute = 1 grapheme
+    const s = "e\u{0301}";
+    try std.testing.expectEqual(@as(usize, 1), len(s));
+}
+test "len - multiple combining marks" {
+    // Base + multiple combining marks = still 1 grapheme
+    const s = "a\u{0300}\u{0301}\u{0302}"; // a with 3 combining marks
+    try std.testing.expectEqual(@as(usize, 1), len(s));
+}
+test "at - combining marks" {
+    const s = "e\u{0301}x";
+    const first = at(s, 0).?;
+    try std.testing.expectEqual(@as(usize, 3), first.len); // e + combining acute = 3 bytes
+    try std.testing.expectEqualStrings("x", at(s, 1).?);
+}
+// --- Lower/Upper Edge Cases ---
+test "lower - already lowercase" {
+    const allocator = std.testing.allocator;
+    const result = try lower(allocator, "hello");
+    defer allocator.free(result);
+    try std.testing.expectEqualStrings("hello", result);
+}
+test "lower - mixed with non-ascii" {
+    const allocator = std.testing.allocator;
+    // Non-ASCII characters should be preserved (no Unicode case folding)
+    const result = try lower(allocator, "Hello Wörld");
+    defer allocator.free(result);
+    try std.testing.expectEqualStrings("hello wörld", result);
+}
+test "upper - already uppercase" {
+    const allocator = std.testing.allocator;
+    const result = try upper(allocator, "HELLO");
+    defer allocator.free(result);
+    try std.testing.expectEqualStrings("HELLO", result);
+}
+test "upper - numbers and symbols" {
+    const allocator = std.testing.allocator;
+    const result = try upper(allocator, "hello123!@#");
+    defer allocator.free(result);
+    try std.testing.expectEqualStrings("HELLO123!@#", result);
+}
+// --- Fill Edge Cases ---
+test "fill - zero count" {
+    const allocator = std.testing.allocator;
+    const result = try fill(allocator, "x", 0);
+    defer allocator.free(result);
+    try std.testing.expectEqualStrings("", result);
+}
+test "fill - empty grapheme" {
+    const allocator = std.testing.allocator;
+    const result = try fill(allocator, "", 5);
+    defer allocator.free(result);
+    try std.testing.expectEqualStrings("", result);
+}
+test "fill - multibyte grapheme" {
+    const allocator = std.testing.allocator;
+    const result = try fill(allocator, "世", 3);
+    defer allocator.free(result);
+    try std.testing.expectEqualStrings("世世世", result);
+}
+// --- Pad No-op Cases ---
+test "lpad - already long enough" {
+    const allocator = std.testing.allocator;
+    const result = try lpad(allocator, "Hello", 3, " ");
+    defer allocator.free(result);
+    try std.testing.expectEqualStrings("Hello", result);
+}
+test "rpad - already long enough" {
+    const allocator = std.testing.allocator;
+    const result = try rpad(allocator, "Hello", 3, " ");
+    defer allocator.free(result);
+    try std.testing.expectEqualStrings("Hello", result);
+}
+test "pad - already long enough" {
+    const allocator = std.testing.allocator;
+    const result = try pad(allocator, "Hello", 3, " ");
+    defer allocator.free(result);
+    try std.testing.expectEqualStrings("Hello", result);
+}
+// --- Reverse Edge Cases ---
+test "reverse - single grapheme" {
+    const allocator = std.testing.allocator;
+    const result = try reverse(allocator, "A");
+    defer allocator.free(result);
+    try std.testing.expectEqualStrings("A", result);
+}
+test "reverse - ZWJ sequence" {
+    const allocator = std.testing.allocator;
+    const result = try reverse(allocator, "👨‍👩‍👧");
+    defer allocator.free(result);
+    // Reversing a single grapheme should return the same grapheme
+    try std.testing.expectEqualStrings("👨‍👩‍👧", result);
+}
+test "reverse - mixed unicode" {
+    const allocator = std.testing.allocator;
+    const result = try reverse(allocator, "A世B");
+    defer allocator.free(result);
+    try std.testing.expectEqualStrings("B世A", result);
+}
+// --- Boundary Conditions ---
+test "len - single ASCII" {
+    try std.testing.expectEqual(@as(usize, 1), len("A"));
+}
+test "len - single multibyte" {
+    try std.testing.expectEqual(@as(usize, 1), len("世"));
+}
+test "width - single wide char" {
+    try std.testing.expectEqual(@as(usize, 2), width("世"));
+}
+test "at - last grapheme" {
+    try std.testing.expectEqualStrings("o", at("Hello", 4).?);
+}
+test "at - just past end" {
+    try std.testing.expectEqual(@as(?[]const u8, null), at("Hello", 5));
+}
+test "offset - at string length" {
+    try std.testing.expectEqual(@as(usize, 5), offset("Hello", 5));
+}
