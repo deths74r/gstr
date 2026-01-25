@@ -3,8 +3,6 @@
 //
 // UAX #29 Extended Grapheme Cluster Segmentation
 
-use encoding::utf8;
-
 // Unicode replacement character (for decode errors)
 export def REPLACEMENT_CHAR: rune = '\uFFFD';
 

@@ -176,6 +176,9 @@ pub fn width(s: []const u8) usize {
 /// Returns the Nth grapheme cluster (0-indexed), or null if out of bounds.
 ///
 /// Example: `at("Hello", 1)` returns "e"
+///
+/// O(n) - scans from start. For sequential iteration, use `graphemes()` or
+/// `nextGrapheme()` to avoid O(n²) when called in a loop.
 pub fn at(s: []const u8, n: usize) ?[]const u8 {
     var out_len: usize = 0;
     const ptr = c.c.gstrat(s.ptr, s.len, n, &out_len);
@@ -186,6 +189,9 @@ pub fn at(s: []const u8, n: usize) ?[]const u8 {
 }
 
 /// Returns the byte offset of the Nth grapheme cluster.
+///
+/// O(n) - scans from start. For sequential iteration, use `nextGrapheme()`
+/// to avoid O(n²) when called in a loop.
 pub fn offset(s: []const u8, grapheme_n: usize) usize {
     return c.c.gstroff(s.ptr, s.len, grapheme_n);
 }

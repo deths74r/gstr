@@ -199,6 +199,9 @@ func Width(s string) int {
 
 // Offset returns the byte offset of the nth grapheme cluster (0-indexed).
 // Returns len(s) if n is beyond the end.
+//
+// O(n) - scans from start. For sequential iteration, use an Iterator instead
+// to avoid O(n²) when called in a loop.
 func Offset(s string, n int) int {
 	if len(s) == 0 {
 		return 0
@@ -210,6 +213,9 @@ func Offset(s string, n int) int {
 
 // At returns the nth grapheme cluster (0-indexed).
 // Returns empty string if n is out of range.
+//
+// O(n) - scans from start. For sequential iteration, use an Iterator instead
+// to avoid O(n²) when called in a loop.
 func At(s string, n int) string {
 	if len(s) == 0 || n < 0 {
 		return ""

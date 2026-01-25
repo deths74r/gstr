@@ -801,6 +801,25 @@ const char *gstrat(const char *s, size_t byte_len, size_t grapheme_n, size_t *ou
 ```
 Get pointer to Nth grapheme. Stores grapheme's byte length in `out_len`.
 
+> **Performance Note:** `gstroff` and `gstrat` are O(n) — they scan from the start
+> of the string each time. For sequential iteration, use `utf8_next_grapheme()`
+> directly to avoid O(n²) complexity:
+>
+> ```c
+> // BAD: O(n²) - rescans from start each iteration
+> for (size_t g = 0; g < count; g++) {
+>     size_t off = gstroff(s, len, g);  // O(g) each call
+> }
+>
+> // GOOD: O(n) - incremental advancement
+> int off = 0;
+> while (off < len) {
+>     int next = utf8_next_grapheme(s, len, off);  // O(1)
+>     // process s[off..next)
+>     off = next;
+> }
+> ```
+
 
 #### Comparison Functions
 

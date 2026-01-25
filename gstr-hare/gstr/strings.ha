@@ -58,7 +58,8 @@ export fn gstrwidth(s: str) size = {
 	return width;
 };
 
-// Get byte off of nth grapheme
+// Get byte offset of nth grapheme. O(n) - scans from start.
+// For sequential iteration, use next_grapheme() instead to avoid O(n²).
 export fn gstroff(s: str, n: size) size = {
 	const bytes = toutf8(s);
 	if (len(bytes) == 0) {
@@ -76,7 +77,8 @@ export fn gstroff(s: str, n: size) size = {
 	return off;
 };
 
-// Get nth grapheme as a string slice
+// Get nth grapheme as a string slice. O(n) - scans from start.
+// For sequential iteration, use next_grapheme() or iter() instead to avoid O(n²).
 export fn gstrat(s: str, n: size) (str | void) = {
 	const bytes = toutf8(s);
 	if (len(bytes) == 0) {

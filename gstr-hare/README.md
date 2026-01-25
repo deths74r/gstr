@@ -113,6 +113,44 @@ gstr::prev_grapheme(bytes, offset);  // Previous boundary
 gstr::grapheme_width(bytes, start, end);
 ```
 
+## Performance Notes
+
+### Sequential Iteration: Use `next_grapheme`, Not `gstroff`
+
+`gstroff(s, n)` and `gstrat(s, n)` scan from the beginning of the string each time - they are O(n) operations. Using them in a loop creates O(n²) complexity:
+
+```hare
+// BAD: O(n²) - gstroff rescans from start each iteration
+for (let g: size = 0; g < count; g += 1) {
+    const off = gstr::gstroff(s, g + 1);  // O(g) each call!
+    // ...
+}
+
+// GOOD: O(n) - next_grapheme advances incrementally
+let bytes = strings::toutf8(s);
+let off: size = 0;
+for (let g: size = 0; g < count; g += 1) {
+    const next_off = gstr::next_grapheme(bytes, off);  // O(1)
+    // Process bytes[off..next_off]
+    off = next_off;
+}
+
+// ALSO GOOD: Use the iterator
+let it = gstr::iter(s);
+for (true) {
+    match (gstr::next(&it)) {
+    case let g: str =>
+        // Process grapheme g
+    case void =>
+        break;
+    };
+};
+```
+
+**Rule of thumb:**
+- **Random access** (jump to grapheme N): Use `gstroff` / `gstrat`
+- **Sequential iteration**: Use `next_grapheme` or the iterator
+
 ## Test Cases Covered
 
 - Empty strings

@@ -1597,9 +1597,29 @@ static inline size_t gstrwidth(const char *s, size_t byte_len) {
 
 /* ============================================================================
  * Grapheme String Layer: Indexing Functions
+ *
+ * NOTE: gstroff() and gstrat() are O(n) - they scan from the start each time.
+ * For sequential iteration, use utf8_next_grapheme() directly to avoid O(n²):
+ *
+ *   // BAD: O(n²)
+ *   for (size_t g = 0; g < count; g++) {
+ *       size_t off = gstroff(s, len, g + 1);  // rescans from start!
+ *   }
+ *
+ *   // GOOD: O(n)
+ *   int off = 0;
+ *   for (size_t g = 0; g < count; g++) {
+ *       int next = utf8_next_grapheme(s, len, off);  // incremental
+ *       // process s[off..next)
+ *       off = next;
+ *   }
  * ============================================================================
  */
 
+/*
+ * Get byte offset of nth grapheme. O(n) - scans from start.
+ * For sequential iteration, use utf8_next_grapheme() instead.
+ */
 static inline size_t gstroff(const char *s, size_t byte_len,
                              size_t grapheme_n) {
   if (!s)
@@ -1620,6 +1640,8 @@ static inline size_t gstroff(const char *s, size_t byte_len,
  * Returns a pointer to the grapheme at index grapheme_n (0-based).
  * Optionally returns the grapheme's byte length in out_len.
  * Returns NULL if the index is out of bounds.
+ *
+ * O(n) - scans from start. For sequential iteration, use utf8_next_grapheme().
  */
 static inline const char *gstrat(const char *s, size_t byte_len,
                                  size_t grapheme_n, size_t *out_len) {
