@@ -1468,6 +1468,42 @@ TEST(utf8_cpwidth_basic) {
   ASSERT_EQ(utf8_cpwidth(0x0301), 0); /* Combining acute - zero width */
 }
 
+TEST(utf8_cpwidth_eaw_split) {
+  /* Card suit symbols: ea=A (ambiguous), should be width 1 */
+  ASSERT_EQ(utf8_cpwidth(0x2660), 1); /* BLACK SPADE SUIT */
+  ASSERT_EQ(utf8_cpwidth(0x2663), 1); /* BLACK CLUB SUIT */
+  ASSERT_EQ(utf8_cpwidth(0x2665), 1); /* BLACK HEART SUIT */
+  ASSERT_EQ(utf8_cpwidth(0x2666), 1); /* BLACK DIAMOND SUIT */
+  ASSERT_EQ(utf8_cpwidth(0x2605), 1); /* BLACK STAR, ea=A */
+  /* Playing cards: ea=N, should be width 1 */
+  ASSERT_EQ(utf8_cpwidth(0x1F0A1), 1); /* PLAYING CARD ACE OF SPADES */
+  ASSERT_EQ(utf8_cpwidth(0x1F0A2), 1); /* PLAYING CARD TWO OF SPADES */
+  /* CJK: ea=W, should be width 2 */
+  ASSERT_EQ(utf8_cpwidth(0x65E5), 2); /* CJK SUN/DAY */
+  ASSERT_EQ(utf8_cpwidth(0x4E2D), 2); /* CJK MIDDLE */
+  /* Fullwidth: ea=F, should be width 2 */
+  ASSERT_EQ(utf8_cpwidth(0xFF28), 2); /* FULLWIDTH LATIN H */
+  /* Emoji with Emoji_Presentation: ea=W, should be width 2 */
+  ASSERT_EQ(utf8_cpwidth(0x1F600), 2); /* GRINNING FACE */
+  ASSERT_EQ(utf8_cpwidth(0x1F680), 2); /* ROCKET */
+}
+
+TEST(extended_pictographic_split) {
+  /* ExtPict codepoints should be recognized as grapheme cluster bases for GB11 */
+  /* ♠♣♥♦ are Extended_Pictographic=Yes */
+  const char *spade_zwj_spade = "\xe2\x99\xa0\xe2\x80\x8d\xe2\x99\xa0";
+  ASSERT_EQ((int)gstrlen(spade_zwj_spade, strlen(spade_zwj_spade)), 1);
+  /* ☀ (U+2600) is Extended_Pictographic=Yes */
+  const char *sun_zwj_sun = "\xe2\x98\x80\xe2\x80\x8d\xe2\x98\x80";
+  ASSERT_EQ((int)gstrlen(sun_zwj_sun, strlen(sun_zwj_sun)), 1);
+  /* CJK is NOT ExtPict — ZWJ should NOT join */
+  const char *cjk_zwj_cjk = "\xe4\xb8\xad\xe2\x80\x8d\xe4\xb8\xad";
+  ASSERT_EQ((int)gstrlen(cjk_zwj_cjk, strlen(cjk_zwj_cjk)), 2);
+  /* ★ (U+2605) is NOT ExtPict — ZWJ should NOT join */
+  const char *star_zwj_star = "\xe2\x98\x85\xe2\x80\x8d\xe2\x98\x85";
+  ASSERT_EQ((int)gstrlen(star_zwj_star, strlen(star_zwj_star)), 2);
+}
+
 TEST(utf8_truncate_basic) {
   /* CJK string: "日本語" (each char is 2 columns) */
   const char *s = "\xE6\x97\xA5\xE6\x9C\xAC\xE8\xAA\x9E";
@@ -1717,6 +1753,8 @@ int main(void) {
   RUN(utf8_valid_bad);
   RUN(utf8_cpcount_basic);
   RUN(utf8_cpwidth_basic);
+  RUN(utf8_cpwidth_eaw_split);
+  RUN(extended_pictographic_split);
   RUN(utf8_truncate_basic);
 
   printf("\n----------------------------------------\n");
