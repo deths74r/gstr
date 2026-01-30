@@ -869,6 +869,51 @@ func TestGraphemeIteratorReset(t *testing.T) {
 	}
 }
 
+// TestWidthEAWSplit verifies that Extended_Pictographic symbols that are NOT
+// East_Asian_Width W/F are correctly measured as width 1, not width 2.
+func TestWidthEAWSplit(t *testing.T) {
+	// These are ExtPict but NOT EAW Wide — should be width 1
+	tests := []struct {
+		input    string
+		expected int
+	}{
+		{"♠", 1}, // U+2660 BLACK SPADE SUIT
+		{"♣", 1}, // U+2663 BLACK CLUB SUIT
+		{"♥", 1}, // U+2665 BLACK HEART SUIT
+		{"♦", 1}, // U+2666 BLACK DIAMOND SUIT
+		{"★", 1}, // U+2605 BLACK STAR
+		// These ARE EAW Wide — should be width 2
+		{"😀", 2}, // U+1F600 GRINNING FACE
+		{"日", 2},  // U+65E5 CJK
+	}
+	for _, tt := range tests {
+		got := Width(tt.input)
+		if got != tt.expected {
+			t.Errorf("Width(%q) = %d, want %d", tt.input, got, tt.expected)
+		}
+	}
+}
+// TestExtendedPictographicSplit verifies that ZWJ joins work correctly
+// after splitting DOUBLE_WIDTH_RANGES into EAW_WIDE + EXTENDED_PICTOGRAPHIC.
+func TestExtendedPictographicSplit(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected int
+	}{
+		// ♠ (U+2660) IS Extended_Pictographic — ZWJ should join
+		{"♠\u200D♠", 1},
+		// 中 (U+4E2D) is NOT Extended_Pictographic — ZWJ should not join
+		{"中\u200D中", 2},
+		// ★ (U+2605) is NOT Extended_Pictographic — ZWJ should not join
+		{"★\u200D★", 2},
+	}
+	for _, tt := range tests {
+		got := Len(tt.input)
+		if got != tt.expected {
+			t.Errorf("Len(%q) = %d, want %d", tt.input, got, tt.expected)
+		}
+	}
+}
 // Benchmark tests
 func BenchmarkLen(b *testing.B) {
 	s := strings.Repeat("Hello 世界 👋 ", 100)

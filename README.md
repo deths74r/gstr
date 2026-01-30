@@ -765,7 +765,7 @@ printf("Truncated: %.*s\n", cut, text);  // "Hello" (only 5 cols fit)
 | `utf8_cpwidth(codepoint)` | Width of codepoint: -1 (control), 0 (combining), 1 (normal), 2 (wide). |
 | `utf8_charwidth(text, len, offset)` | Width of UTF-8 character at byte offset. |
 | `utf8_is_zerowidth(codepoint)` | Returns 1 if codepoint is zero-width (combining marks, ZWJ, etc). |
-| `utf8_is_wide(codepoint)` | Returns 1 if codepoint is double-width (CJK, emoji). |
+| `utf8_is_wide(codepoint)` | Returns 1 if codepoint is wide (East_Asian_Width W or F). |
 | `utf8_truncate(text, len, max_cols)` | Byte offset to truncate at max display width. |
 
 

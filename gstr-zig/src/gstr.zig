@@ -1867,3 +1867,24 @@ test "at - just past end" {
 test "offset - at string length" {
     try std.testing.expectEqual(@as(usize, 5), offset("Hello", 5));
 }
+// --- Width regression: EAW split ---
+test "width - eaw split" {
+    // ExtPict symbols that are NOT EAW Wide should be width 1
+    try std.testing.expectEqual(@as(usize, 1), width("♠")); // U+2660
+    try std.testing.expectEqual(@as(usize, 1), width("♣")); // U+2663
+    try std.testing.expectEqual(@as(usize, 1), width("♥")); // U+2665
+    try std.testing.expectEqual(@as(usize, 1), width("♦")); // U+2666
+    try std.testing.expectEqual(@as(usize, 1), width("★")); // U+2605
+    // EAW Wide should be width 2
+    try std.testing.expectEqual(@as(usize, 2), width("😀")); // U+1F600
+    try std.testing.expectEqual(@as(usize, 2), width("日")); // U+65E5
+}
+// --- ZWJ regression: ExtPict split ---
+test "extended pictographic split" {
+    // ♠ (U+2660) IS ExtPict — ZWJ should join
+    try std.testing.expectEqual(@as(usize, 1), len("♠\u{200D}♠"));
+    // 中 (U+4E2D) is NOT ExtPict — ZWJ should not join
+    try std.testing.expectEqual(@as(usize, 2), len("中\u{200D}中"));
+    // ★ (U+2605) is NOT ExtPict — ZWJ should not join
+    try std.testing.expectEqual(@as(usize, 2), len("★\u{200D}★"));
+}

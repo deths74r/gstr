@@ -328,6 +328,36 @@ export fn main() void = {
 	if (test_chr("", "a", void)) passed += 1 else failed += 1;
 	
 	// =========================================================================
+	// Width regression: EAW split (ExtPict symbols should be width 1, not 2)
+	// =========================================================================
+	fmt::println("")!;
+	fmt::println("=== Width Regression (EAW Split) ===")!;
+	
+	// These are Extended_Pictographic but NOT East_Asian_Width W/F
+	// They should be width 1, not width 2
+	if (test_width("♠", 1)) passed += 1 else failed += 1;
+	if (test_width("♣", 1)) passed += 1 else failed += 1;
+	if (test_width("♥", 1)) passed += 1 else failed += 1;
+	if (test_width("♦", 1)) passed += 1 else failed += 1;
+	if (test_width("★", 1)) passed += 1 else failed += 1;
+	// These ARE East_Asian_Width W/F — should be width 2
+	if (test_width("😀", 2)) passed += 1 else failed += 1;
+	if (test_width("日", 2)) passed += 1 else failed += 1;
+	
+	// =========================================================================
+	// ZWJ regression: ExtPict should join, non-ExtPict should not
+	// =========================================================================
+	fmt::println("")!;
+	fmt::println("=== ZWJ Regression (ExtPict Split) ===")!;
+	
+	// ♠ (U+2660) IS Extended_Pictographic — ZWJ should join
+	if (test_len("♠\u200D♠", 1)) passed += 1 else failed += 1;
+	// 中 (U+4E2D) is NOT Extended_Pictographic — ZWJ should not join
+	if (test_len("中\u200D中", 2)) passed += 1 else failed += 1;
+	// ★ (U+2605) is NOT Extended_Pictographic — ZWJ should not join
+	if (test_len("★\u200D★", 2)) passed += 1 else failed += 1;
+	
+	// =========================================================================
 	// Summary
 	// =========================================================================
 	fmt::println("")!;

@@ -10,11 +10,14 @@ literals for:
 
 Usage:
     python3 scripts/gen_unicode_tables.py > /dev/null  # just validate
-    python3 scripts/gen_unicode_tables.py              # print tables to stdout
+    python3 scripts/gen_unicode_tables.py              # print C tables to stdout
+    python3 scripts/gen_unicode_tables.py --hare       # print Hare tables to stdout
 
-Paste the output into include/gstr.h to replace the hand-maintained tables.
+Paste the output into include/gstr.h (C) or gstr-hare/gstr/ (Hare) to replace
+the hand-maintained tables.
 """
 
+import argparse
 import os
 import re
 import sys
@@ -233,44 +236,12 @@ def validate_no_overlaps(ranges, name):
     return True
 
 
-def main():
-    # Download data files
-    eaw_text = download("EastAsianWidth.txt", FILES["EastAsianWidth.txt"])
-    emoji_text = download("emoji-data.txt", FILES["emoji-data.txt"])
-    gbp_text = download(
-        "GraphemeBreakProperty.txt", FILES["GraphemeBreakProperty.txt"]
-    )
-
-    # Generate tables
-    eaw_ranges = generate_eaw_wide(eaw_text)
-    extpict_ranges = generate_extended_pictographic(emoji_text)
-    gcb_ranges = generate_gcb(gbp_text)
-
-    # Validate
-    ok = True
-    ok &= validate_no_overlaps(eaw_ranges, "EAW_WIDE_RANGES")
-    ok &= validate_no_overlaps(extpict_ranges, "EXTENDED_PICTOGRAPHIC_RANGES")
-    ok &= validate_no_overlaps(gcb_ranges, "GCB_RANGES")
-
-    if not ok:
-        print("VALIDATION FAILED - overlaps detected!", file=sys.stderr)
-        sys.exit(1)
-
-    # Print stats
-    print(f"// Generated from Unicode {UNICODE_VERSION}", file=sys.stderr)
-    print(f"// EAW_WIDE_RANGES: {len(eaw_ranges)} entries", file=sys.stderr)
-    print(
-        f"// EXTENDED_PICTOGRAPHIC_RANGES: {len(extpict_ranges)} entries",
-        file=sys.stderr,
-    )
-    print(f"// GCB_RANGES: {len(gcb_ranges)} entries", file=sys.stderr)
-
-    # Output C tables
+def output_c_tables(eaw_ranges, extpict_ranges, gcb_ranges):
+    """Output tables in C syntax."""
     print("/* ====== EAW_WIDE_RANGES ====== */")
     print(f"/* East_Asian_Width W/F (Unicode {UNICODE_VERSION}) */")
     print()
 
-    # Format EAW table
     print("static const struct unicode_range EAW_WIDE_RANGES[] = {")
     for i in range(0, len(eaw_ranges), 3):
         group = eaw_ranges[i : i + 3]
@@ -324,6 +295,103 @@ def main():
             print(f"    {{0x{s:04X}, 0x{e:04X}, {prop}}},")
     print("};")
     print("#define GCB_RANGE_COUNT (sizeof(GCB_RANGES) / sizeof(GCB_RANGES[0]))")
+
+
+# Hare GCB property name mapping
+HARE_GCB_MAP = {
+    "GCB_CR": "gcb::CR",
+    "GCB_LF": "gcb::LF",
+    "GCB_CONTROL": "gcb::CONTROL",
+    "GCB_EXTEND": "gcb::EXTEND",
+    "GCB_ZWJ": "gcb::ZWJ",
+    "GCB_REGIONAL_INDICATOR": "gcb::REGIONAL_INDICATOR",
+    "GCB_PREPEND": "gcb::PREPEND",
+    "GCB_SPACING_MARK": "gcb::SPACING_MARK",
+    "GCB_L": "gcb::L",
+    "GCB_V": "gcb::V",
+    "GCB_T": "gcb::T",
+    "GCB_LV": "gcb::LV",
+    "GCB_LVT": "gcb::LVT",
+}
+
+
+def output_hare_tables(eaw_ranges, extpict_ranges, gcb_ranges):
+    """Output tables in Hare syntax."""
+    print(f"// East_Asian_Width W/F character ranges (Unicode {UNICODE_VERSION})")
+    print(
+        "// Only ea=W (Wide) and ea=F (Fullwidth) \u2014 used for display width calculation."
+    )
+    print("export const EAW_WIDE_RANGES: [_]unicode_range = [")
+    for s, e in eaw_ranges:
+        print(f"\tunicode_range {{ start = 0x{s:04X}, end = 0x{e:04X} }},")
+    print("];")
+    print()
+
+    print(f"// Extended_Pictographic=Yes character ranges (Unicode {UNICODE_VERSION})")
+    print("// Used for grapheme cluster break rule GB11 (ZWJ sequences).")
+    print("export const EXTENDED_PICTOGRAPHIC_RANGES: [_]unicode_range = [")
+    for s, e in extpict_ranges:
+        print(f"\tunicode_range {{ start = 0x{s:04X}, end = 0x{e:04X} }},")
+    print("];")
+    print()
+
+    print(f"// GCB property ranges (Unicode {UNICODE_VERSION}, non-overlapping)")
+    print("// LV/LVT computed algorithmically for Hangul U+AC00-U+D7A3.")
+    print("const GCB_RANGES: [_]gcb_range = [")
+    for s, e, prop in gcb_ranges:
+        hare_prop = HARE_GCB_MAP[prop]
+        print(
+            f"\tgcb_range {{ start = 0x{s:04X}, end = 0x{e:04X}, prop = {hare_prop} }},"
+        )
+    print("];")
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Generate Unicode property tables for gstr"
+    )
+    parser.add_argument(
+        "--hare",
+        action="store_true",
+        help="Output Hare syntax instead of C",
+    )
+    args = parser.parse_args()
+
+    # Download data files
+    eaw_text = download("EastAsianWidth.txt", FILES["EastAsianWidth.txt"])
+    emoji_text = download("emoji-data.txt", FILES["emoji-data.txt"])
+    gbp_text = download(
+        "GraphemeBreakProperty.txt", FILES["GraphemeBreakProperty.txt"]
+    )
+
+    # Generate tables
+    eaw_ranges = generate_eaw_wide(eaw_text)
+    extpict_ranges = generate_extended_pictographic(emoji_text)
+    gcb_ranges = generate_gcb(gbp_text)
+
+    # Validate
+    ok = True
+    ok &= validate_no_overlaps(eaw_ranges, "EAW_WIDE_RANGES")
+    ok &= validate_no_overlaps(extpict_ranges, "EXTENDED_PICTOGRAPHIC_RANGES")
+    ok &= validate_no_overlaps(gcb_ranges, "GCB_RANGES")
+
+    if not ok:
+        print("VALIDATION FAILED - overlaps detected!", file=sys.stderr)
+        sys.exit(1)
+
+    # Print stats
+    print(f"// Generated from Unicode {UNICODE_VERSION}", file=sys.stderr)
+    print(f"// EAW_WIDE_RANGES: {len(eaw_ranges)} entries", file=sys.stderr)
+    print(
+        f"// EXTENDED_PICTOGRAPHIC_RANGES: {len(extpict_ranges)} entries",
+        file=sys.stderr,
+    )
+    print(f"// GCB_RANGES: {len(gcb_ranges)} entries", file=sys.stderr)
+
+    if args.hare:
+        output_hare_tables(eaw_ranges, extpict_ranges, gcb_ranges)
+    else:
+        output_c_tables(eaw_ranges, extpict_ranges, gcb_ranges)
 
 
 if __name__ == "__main__":

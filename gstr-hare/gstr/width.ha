@@ -40,8 +40,8 @@ export fn cpwidth(cp: u32) i8 = {
 		return 0;
 	};
 	
-	// Double-width characters
-	if (range_contains(DOUBLE_WIDTH_RANGES, cp)) {
+	// Wide characters (East_Asian_Width W/F)
+	if (range_contains(EAW_WIDE_RANGES, cp)) {
 		return 2;
 	};
 	
@@ -53,7 +53,7 @@ export fn is_zerowidth(cp: u32) bool = {
 	return range_contains(ZERO_WIDTH_RANGES, cp);
 };
 
-// Returns true if the codepoint is double-width
+// Returns true if the codepoint is wide (East_Asian_Width W/F)
 export fn is_wide(cp: u32) bool = {
-	return range_contains(DOUBLE_WIDTH_RANGES, cp);
+	return range_contains(EAW_WIDE_RANGES, cp);
 };

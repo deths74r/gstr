@@ -213,6 +213,12 @@ cd gstr-zig
 zig build test
 ```
 
+Tests cover: basic length/width, CJK, emoji (ZWJ sequences, skin tones, flags), combining marks, Korean Hangul, searching, comparison, prefix/suffix, padding, trimming, tokenization, EAW split regression (♠♣♥♦★ = width 1), and ZWJ join/non-join verification.
+
+## Unicode Version
+
+Unicode 17.0 property tables via the C header (`include/gstr.h`). The Zig bindings use `@cImport` to access the C implementation directly — no duplicate tables.
+
 ## License
 
 MIT - see [LICENSE](../LICENSE)
