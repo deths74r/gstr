@@ -56,13 +56,17 @@ $(TESTDIR)/test_utf8_layer: $(TESTDIR)/test_utf8_layer.c $(TESTDIR)/test_macros.
 $(TESTDIR)/test_edge_cases: $(TESTDIR)/test_edge_cases.c $(TESTDIR)/test_macros.h $(HEADER)
 	$(CC) $(CFLAGS_DEBUG) -I$(INCDIR) -I$(TESTDIR) $< -o $@
 
-build-test: $(TESTDIR)/test_gstr $(TESTDIR)/test_grapheme_walk $(TESTDIR)/test_utf8_layer $(TESTDIR)/test_edge_cases
+$(TESTDIR)/test_mcdc_grapheme_break: $(TESTDIR)/test_mcdc_grapheme_break.c $(TESTDIR)/test_macros.h $(HEADER)
+	$(CC) $(CFLAGS_DEBUG) -I$(INCDIR) -I$(TESTDIR) $< -o $@
+
+build-test: $(TESTDIR)/test_gstr $(TESTDIR)/test_grapheme_walk $(TESTDIR)/test_utf8_layer $(TESTDIR)/test_edge_cases $(TESTDIR)/test_mcdc_grapheme_break
 
 run-test: build-test
 	./$(TESTDIR)/test_gstr
 	./$(TESTDIR)/test_grapheme_walk
 	./$(TESTDIR)/test_utf8_layer
 	./$(TESTDIR)/test_edge_cases
+	./$(TESTDIR)/test_mcdc_grapheme_break
 
 test: run-test
 
@@ -93,6 +97,7 @@ clean:
 	rm -f $(TESTDIR)/test_grapheme_walk
 	rm -f $(TESTDIR)/test_utf8_layer
 	rm -f $(TESTDIR)/test_edge_cases
+	rm -f $(TESTDIR)/test_mcdc_grapheme_break
 	rm -f *.db-shm *.db-wal
 	rm -rf scripts/.unicode_cache/
 	rm -f gstr.pc
