@@ -18,6 +18,28 @@
 #include <signal.h>
 #include <gstr.h>
 
+/* Compatibility shims for building against older gstr.h */
+#ifndef GSTR_UNICODE_VERSION
+#define GSTR_UNICODE_VERSION "unknown"
+#endif
+
+/* v2 changed utf8_prev_grapheme to take (text, length, offset);
+ * v1 has (text, offset). Detect by checking for size_t return type. */
+#if !defined(GSTR_UNICODE_VERSION_MAJOR)
+#define utf8_prev_grapheme_compat(text, len, off) utf8_prev_grapheme(text, off)
+#define utf8_next_grapheme_compat(text, len, off) utf8_next_grapheme(text, (int)(len), (int)(off))
+#define utf8_decode_compat(text, len, cp) utf8_decode(text, (int)(len), cp)
+#define gstr_grapheme_width_compat(s, len, off, next) 0  /* not available in v1 */
+#define HAS_GRAPHEME_WIDTH 0
+#else
+#define utf8_prev_grapheme_compat(text, len, off) utf8_prev_grapheme(text, len, off)
+#define utf8_next_grapheme_compat(text, len, off) utf8_next_grapheme(text, len, off)
+#define utf8_decode_compat(text, len, cp) utf8_decode(text, len, cp)
+#define gstr_grapheme_width_compat(s, len, off, next) gstr_grapheme_width(s, len, off, next)
+#define HAS_GRAPHEME_WIDTH 1
+#endif
+
+
 /* GCB property name mapping */
 static const char *GCB_NAMES[] = {
     "OTHER", "CR", "LF", "CONTROL", "EXTEND", "ZWJ",
@@ -337,7 +359,7 @@ static void draw_screen(struct cursor_state *st) {
     const struct test_string *ts = &TEST_STRINGS[st->string_idx];
     size_t cur_start = st->byte_offset;
     size_t cur_end = (ts->length > 0)
-        ? utf8_next_grapheme(ts->data, ts->length, cur_start)
+        ? utf8_next_grapheme_compat(ts->data, ts->length, cur_start)
         : 0;
 
     clear_screen();
@@ -363,7 +385,7 @@ static void draw_screen(struct cursor_state *st) {
     printf("  ");
     size_t off = 0;
     while (off < ts->length) {
-        size_t next = utf8_next_grapheme(ts->data, ts->length, off);
+        size_t next = utf8_next_grapheme_compat(ts->data, ts->length, off);
         size_t glen = next - off;
 
         if (off == cur_start) {
@@ -372,7 +394,7 @@ static void draw_screen(struct cursor_state *st) {
 
         /* Check if it's a control/invisible character */
         uint32_t first_cp;
-        utf8_decode(ts->data + off, glen, &first_cp);
+        utf8_decode_compat(ts->data + off, glen, &first_cp);
         if (first_cp < 0x20 || first_cp == 0x7F ||
             (first_cp >= 0x80 && first_cp <= 0x9F) ||
             first_cp == 0xFFFD) {
@@ -396,16 +418,18 @@ static void draw_screen(struct cursor_state *st) {
     move_to(7, 1);
     printf("  Byte offset:     %zu..%zu (%zu bytes)", cur_start, cur_end, g_byte_len);
     move_to(8, 1);
-    printf("  Display width:   %zu col%s",
-           gstr_grapheme_width(ts->data, ts->length, cur_start, cur_end),
-           gstr_grapheme_width(ts->data, ts->length, cur_start, cur_end) == 1 ? "" : "s");
+    size_t gwidth = (size_t)gstr_grapheme_width_compat(ts->data, ts->length, cur_start, cur_end);
+    if (HAS_GRAPHEME_WIDTH)
+        printf("  Display width:   %zu col%s", gwidth, gwidth == 1 ? "" : "s");
+    else
+        printf("  Display width:   (n/a - v2 only)");
 
     /* Count codepoints in this cluster */
     size_t cp_count = 0;
     off = cur_start;
     while (off < cur_end) {
         uint32_t cp;
-        size_t cb = utf8_decode(ts->data + off, cur_end - off, &cp);
+        size_t cb = utf8_decode_compat(ts->data + off, cur_end - off, &cp);
         if (cb == 0) break;
         cp_count++;
         off += cb;
@@ -421,7 +445,7 @@ static void draw_screen(struct cursor_state *st) {
     int detail_row = 12;
     while (off < cur_end && detail_row < rows - 4) {
         uint32_t cp;
-        size_t cb = utf8_decode(ts->data + off, cur_end - off, &cp);
+        size_t cb = utf8_decode_compat(ts->data + off, cur_end - off, &cp);
         if (cb == 0) break;
         enum gcb_property prop = get_gcb(cp);
         const char *prop_name = ((size_t)prop < sizeof(GCB_NAMES)/sizeof(GCB_NAMES[0]))
@@ -446,8 +470,8 @@ static void draw_screen(struct cursor_state *st) {
     if (st->show_verify && cur_end <= ts->length) {
         detail_row++;
         move_to(detail_row, 1);
-        size_t roundtrip = utf8_prev_grapheme(ts->data, ts->length,
-            utf8_next_grapheme(ts->data, ts->length, cur_start));
+        size_t roundtrip = utf8_prev_grapheme_compat(ts->data, ts->length,
+            utf8_next_grapheme_compat(ts->data, ts->length, cur_start));
         if (roundtrip == cur_start) {
             printf("  \033[32m\xe2\x9c\x93 fwd->bwd roundtrip OK (offset %zu)\033[0m", roundtrip);
         } else {
@@ -480,7 +504,7 @@ status_bar:
 static void advance_grapheme(struct cursor_state *st) {
     const struct test_string *ts = &TEST_STRINGS[st->string_idx];
     if (ts->length == 0) return;
-    size_t next = utf8_next_grapheme(ts->data, ts->length, st->byte_offset);
+    size_t next = utf8_next_grapheme_compat(ts->data, ts->length, st->byte_offset);
     if (next < ts->length) {
         st->byte_offset = next;
         st->grapheme_idx++;
@@ -490,7 +514,7 @@ static void advance_grapheme(struct cursor_state *st) {
 static void retreat_grapheme(struct cursor_state *st) {
     const struct test_string *ts = &TEST_STRINGS[st->string_idx];
     if (ts->length == 0 || st->byte_offset == 0) return;
-    st->byte_offset = utf8_prev_grapheme(ts->data, ts->length, st->byte_offset);
+    st->byte_offset = utf8_prev_grapheme_compat(ts->data, ts->length, st->byte_offset);
     if (st->grapheme_idx > 0) st->grapheme_idx--;
 }
 
@@ -518,7 +542,7 @@ static void jump_end(struct cursor_state *st) {
     size_t off = 0, prev_off = 0, idx = 0;
     while (off < ts->length) {
         prev_off = off;
-        off = utf8_next_grapheme(ts->data, ts->length, off);
+        off = utf8_next_grapheme_compat(ts->data, ts->length, off);
         if (off < ts->length) idx++;
     }
     st->byte_offset = prev_off;
@@ -574,7 +598,7 @@ static int verify_string(const struct test_string *ts, int string_idx) {
     fwd[fwd_count++] = 0;
     size_t off = 0;
     while (off < ts->length) {
-        off = utf8_next_grapheme(ts->data, ts->length, off);
+        off = utf8_next_grapheme_compat(ts->data, ts->length, off);
         if (fwd_count < MAX_BOUNDARIES)
             fwd[fwd_count++] = off;
     }
@@ -585,7 +609,7 @@ static int verify_string(const struct test_string *ts, int string_idx) {
     off = ts->length;
     bwd[bwd_count++] = off;
     while (off > 0) {
-        off = utf8_prev_grapheme(ts->data, ts->length, off);
+        off = utf8_prev_grapheme_compat(ts->data, ts->length, off);
         if (bwd_count < MAX_BOUNDARIES)
             bwd[bwd_count++] = off;
     }
@@ -610,8 +634,8 @@ static int verify_string(const struct test_string *ts, int string_idx) {
     /* Forward-backward roundtrip */
     if (ok) {
         for (size_t i = 0; i + 1 < fwd_count; i++) {
-            size_t next = utf8_next_grapheme(ts->data, ts->length, fwd[i]);
-            size_t back = utf8_prev_grapheme(ts->data, ts->length, next);
+            size_t next = utf8_next_grapheme_compat(ts->data, ts->length, fwd[i]);
+            size_t back = utf8_prev_grapheme_compat(ts->data, ts->length, next);
             if (back != fwd[i]) { ok = 0; break; }
         }
     }
