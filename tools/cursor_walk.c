@@ -2,20 +2,20 @@
  * SPDX-License-Identifier: MIT
  * Copyright (c) 2025 Edward J Edmonds <edward.edmonds@gmail.com>
  *
- * cursor_walk.c - Grapheme cluster cursor walk tool
+ * cursor_walk.c - Interactive grapheme cluster cursor walk tool
  *
  * Usage:
+ *   ./tools/cursor_walk            # Interactive mode (arrow keys)
  *   ./tools/cursor_walk --verify   # Batch verification mode
- *   ./tools/cursor_walk            # Display all test strings with grapheme info
- *
- * Verifies forward/backward grapheme navigation consistency across curated
- * test strings covering ZWJ sequences, flags, keycaps, Indic conjuncts,
- * Hangul, combining marks, CRLF, variation selectors, and invalid UTF-8.
  */
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
+#include <termios.h>
+#include <sys/ioctl.h>
+#include <signal.h>
 #include <gstr.h>
 
 /* GCB property name mapping */
@@ -29,7 +29,7 @@ struct test_string {
     const char *label;
     const char *data;
     size_t      length;
-    int         is_invalid; /* 1 if contains invalid UTF-8 */
+    int         is_invalid;
 };
 
 /* ============================================================================
@@ -113,7 +113,7 @@ static const struct test_string TEST_STRINGS[] = {
     /* Edge Cases */
     {"Single ASCII", "a", 1, 0},
     {"Single emoji", "\xF0\x9F\x98\x80", 4, 0},
-    {"Prepend + base", "\xD8\x80\xD8\xA8", 4, 0}, /* U+0600 + U+0628 */
+    {"Prepend + base", "\xD8\x80\xD8\xA8", 4, 0},
     {"Emoji + skin tone", "\xF0\x9F\x91\x8B\xF0\x9F\x8F\xBD", 8, 0},
 
     /* Invalid UTF-8 */
@@ -133,48 +133,334 @@ static const struct test_string TEST_STRINGS[] = {
 #define MAX_BOUNDARIES 1024
 
 /* ============================================================================
- * Display mode: print each test string with grapheme details
+ * Terminal handling
  * ============================================================================ */
 
-static void display_string(const struct test_string *ts) {
-    printf("\n--- %s ---\n", ts->label);
-    printf("  Bytes: %zu\n", ts->length);
+static struct termios orig_termios;
+static int raw_mode_active = 0;
+
+static void disable_raw_mode(void) {
+    if (raw_mode_active) {
+        /* Leave alternate screen */
+        write(STDOUT_FILENO, "\033[?1049l", 8);
+        tcsetattr(STDIN_FILENO, TCSAFLUSH, &orig_termios);
+        raw_mode_active = 0;
+    }
+}
+
+static void signal_handler(int sig) {
+    disable_raw_mode();
+    _exit(128 + sig);
+}
+
+static void enable_raw_mode(void) {
+    tcgetattr(STDIN_FILENO, &orig_termios);
+    atexit(disable_raw_mode);
+    signal(SIGINT, signal_handler);
+    signal(SIGTERM, signal_handler);
+
+    struct termios raw = orig_termios;
+    raw.c_lflag &= ~(ECHO | ICANON | ISIG);
+    raw.c_iflag &= ~(IXON | ICRNL);
+    raw.c_cc[VMIN] = 1;
+    raw.c_cc[VTIME] = 0;
+    tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw);
+    raw_mode_active = 1;
+
+    /* Enter alternate screen */
+    write(STDOUT_FILENO, "\033[?1049h", 8);
+}
+
+enum key_code {
+    KEY_NONE = 0,
+    KEY_LEFT, KEY_RIGHT, KEY_UP, KEY_DOWN,
+    KEY_Q, KEY_B, KEY_P, KEY_V,
+    KEY_HOME, KEY_END,
+};
+
+static enum key_code read_key(void) {
+    char c;
+    if (read(STDIN_FILENO, &c, 1) != 1) return KEY_NONE;
+
+    if (c == 'q' || c == 'Q') return KEY_Q;
+    if (c == 'b' || c == 'B') return KEY_B;
+    if (c == 'p' || c == 'P') return KEY_P;
+    if (c == 'v' || c == 'V') return KEY_V;
+    if (c == '0') return KEY_HOME;
+    if (c == '$') return KEY_END;
+
+    if (c == '\033') {
+        char seq[2];
+        if (read(STDIN_FILENO, &seq[0], 1) != 1) return KEY_NONE;
+        if (seq[0] != '[') return KEY_NONE;
+        if (read(STDIN_FILENO, &seq[1], 1) != 1) return KEY_NONE;
+        switch (seq[1]) {
+            case 'A': return KEY_UP;
+            case 'B': return KEY_DOWN;
+            case 'C': return KEY_RIGHT;
+            case 'D': return KEY_LEFT;
+        }
+    }
+    return KEY_NONE;
+}
+
+static void get_terminal_size(int *rows, int *cols) {
+    struct winsize ws;
+    if (ioctl(STDOUT_FILENO, TIOCGWINSZ, &ws) == 0) {
+        *rows = ws.ws_row;
+        *cols = ws.ws_col;
+    } else {
+        *rows = 24;
+        *cols = 80;
+    }
+}
+
+/* ============================================================================
+ * Rendering
+ * ============================================================================ */
+
+struct cursor_state {
+    size_t string_idx;
+    size_t byte_offset;    /* start of current grapheme */
+    size_t grapheme_idx;
+    int show_bytes;
+    int show_props;
+    int show_verify;
+};
+
+static void move_to(int row, int col) {
+    printf("\033[%d;%dH", row, col);
+}
+
+static void clear_screen(void) {
+    printf("\033[2J\033[H");
+}
+
+static void draw_screen(struct cursor_state *st) {
+    int rows, cols;
+    get_terminal_size(&rows, &cols);
+
+    const struct test_string *ts = &TEST_STRINGS[st->string_idx];
+    size_t cur_start = st->byte_offset;
+    size_t cur_end = (ts->length > 0)
+        ? utf8_next_grapheme(ts->data, ts->length, cur_start)
+        : 0;
+
+    clear_screen();
+
+    /* Header */
+    move_to(1, 1);
+    printf("\033[1mgstr-cursor-walk\033[0m | Unicode %s | String %zu/%zu: \033[1m%s\033[0m",
+           GSTR_UNICODE_VERSION, st->string_idx + 1, (size_t)NUM_STRINGS, ts->label);
+
+    /* Key help */
+    move_to(2, 1);
+    printf("\033[2m\xe2\x86\x90/\xe2\x86\x92:grapheme  \xe2\x86\x91/\xe2\x86\x93:string  "
+           "[b]ytes [p]rops [v]erify  [q]uit  [0]start [$]end\033[0m");
 
     if (ts->length == 0) {
-        printf("  (empty string)\n");
-        return;
+        move_to(4, 1);
+        printf("\033[2m(empty string)\033[0m");
+        goto status_bar;
     }
 
-    size_t g_count = gstrlen(ts->data, ts->length);
-    size_t width = gstrwidth(ts->data, ts->length);
-    printf("  Graphemes: %zu, Display width: %zu cols\n", g_count, width);
+    /* Rendered string with highlighted current grapheme */
+    move_to(4, 1);
+    printf("  ");
+    size_t off = 0;
+    while (off < ts->length) {
+        size_t next = utf8_next_grapheme(ts->data, ts->length, off);
+        size_t glen = next - off;
 
-    size_t offset = 0;
-    size_t g_idx = 0;
-    while (offset < ts->length) {
-        size_t next = utf8_next_grapheme(ts->data, ts->length, offset);
-        size_t g_len = next - offset;
-
-        printf("  [%2zu] bytes %3zu..%-3zu (%zu bytes)",
-               g_idx, offset, next - 1, g_len);
-
-        /* Print codepoints */
-        printf("  codepoints:");
-        size_t cp_off = offset;
-        while (cp_off < next) {
-            uint32_t cp;
-            size_t cb = utf8_decode(ts->data + cp_off, next - cp_off, &cp);
-            if (cb == 0) break;
-            enum gcb_property prop = get_gcb(cp);
-            printf(" U+%04X(%s)", cp,
-                   (size_t)prop < sizeof(GCB_NAMES)/sizeof(GCB_NAMES[0])
-                   ? GCB_NAMES[prop] : "?");
-            cp_off += cb;
+        if (off == cur_start) {
+            printf("\033[7m"); /* reverse video */
         }
-        printf("\n");
 
-        offset = next;
-        g_idx++;
+        /* Check if it's a control/invisible character */
+        uint32_t first_cp;
+        utf8_decode(ts->data + off, glen, &first_cp);
+        if (first_cp < 0x20 || first_cp == 0x7F ||
+            (first_cp >= 0x80 && first_cp <= 0x9F) ||
+            first_cp == 0xFFFD) {
+            /* Show as placeholder */
+            printf("\033[2m<U+%04X>\033[22m", first_cp);
+        } else {
+            fwrite(ts->data + off, 1, glen, stdout);
+        }
+
+        if (off == cur_start) {
+            printf("\033[0m"); /* reset */
+        }
+
+        off = next;
+    }
+
+    /* Cluster detail panel */
+    size_t g_byte_len = cur_end - cur_start;
+    move_to(6, 1);
+    printf("  Grapheme index:  %zu", st->grapheme_idx);
+    move_to(7, 1);
+    printf("  Byte offset:     %zu..%zu (%zu bytes)", cur_start, cur_end, g_byte_len);
+    move_to(8, 1);
+    printf("  Display width:   %zu col%s",
+           gstr_grapheme_width(ts->data, ts->length, cur_start, cur_end),
+           gstr_grapheme_width(ts->data, ts->length, cur_start, cur_end) == 1 ? "" : "s");
+
+    /* Count codepoints in this cluster */
+    size_t cp_count = 0;
+    off = cur_start;
+    while (off < cur_end) {
+        uint32_t cp;
+        size_t cb = utf8_decode(ts->data + off, cur_end - off, &cp);
+        if (cb == 0) break;
+        cp_count++;
+        off += cb;
+    }
+    move_to(9, 1);
+    printf("  Codepoint count: %zu", cp_count);
+
+    /* Codepoint breakdown */
+    move_to(11, 1);
+    printf("  Codepoints:");
+    off = cur_start;
+    size_t cp_idx = 0;
+    int detail_row = 12;
+    while (off < cur_end && detail_row < rows - 4) {
+        uint32_t cp;
+        size_t cb = utf8_decode(ts->data + off, cur_end - off, &cp);
+        if (cb == 0) break;
+        enum gcb_property prop = get_gcb(cp);
+        const char *prop_name = ((size_t)prop < sizeof(GCB_NAMES)/sizeof(GCB_NAMES[0]))
+            ? GCB_NAMES[prop] : "?";
+
+        move_to(detail_row, 1);
+        printf("    [%zu] U+%04X  %-18s  width=%d", cp_idx, cp, prop_name,
+               utf8_cpwidth(cp));
+
+        if (st->show_bytes) {
+            printf("  bytes:");
+            for (size_t b = 0; b < cb; b++)
+                printf(" %02X", (unsigned char)ts->data[off + b]);
+        }
+
+        off += cb;
+        cp_idx++;
+        detail_row++;
+    }
+
+    /* Verify overlay */
+    if (st->show_verify && cur_end <= ts->length) {
+        detail_row++;
+        move_to(detail_row, 1);
+        size_t roundtrip = utf8_prev_grapheme(ts->data, ts->length,
+            utf8_next_grapheme(ts->data, ts->length, cur_start));
+        if (roundtrip == cur_start) {
+            printf("  \033[32m\xe2\x9c\x93 fwd->bwd roundtrip OK (offset %zu)\033[0m", roundtrip);
+        } else {
+            printf("  \033[31m\xe2\x9c\x97 fwd->bwd MISMATCH: expected %zu, got %zu\033[0m",
+                   cur_start, roundtrip);
+        }
+    }
+
+status_bar:
+    /* Status bar */
+    move_to(rows, 1);
+    printf("\033[7m");
+    size_t total_graphemes = gstrlen(ts->data, ts->length);
+    char status[256];
+    snprintf(status, sizeof(status),
+             " Grapheme %zu/%zu | %zu bytes | %s",
+             ts->length > 0 ? st->grapheme_idx + 1 : (size_t)0,
+             total_graphemes, ts->length,
+             ts->is_invalid ? "INVALID UTF-8" : "valid UTF-8");
+    printf("%-*s", cols, status);
+    printf("\033[0m");
+
+    fflush(stdout);
+}
+
+/* ============================================================================
+ * Navigation
+ * ============================================================================ */
+
+static void advance_grapheme(struct cursor_state *st) {
+    const struct test_string *ts = &TEST_STRINGS[st->string_idx];
+    if (ts->length == 0) return;
+    size_t next = utf8_next_grapheme(ts->data, ts->length, st->byte_offset);
+    if (next < ts->length) {
+        st->byte_offset = next;
+        st->grapheme_idx++;
+    }
+}
+
+static void retreat_grapheme(struct cursor_state *st) {
+    const struct test_string *ts = &TEST_STRINGS[st->string_idx];
+    if (ts->length == 0 || st->byte_offset == 0) return;
+    st->byte_offset = utf8_prev_grapheme(ts->data, ts->length, st->byte_offset);
+    if (st->grapheme_idx > 0) st->grapheme_idx--;
+}
+
+static void next_string(struct cursor_state *st) {
+    st->string_idx = (st->string_idx + 1) % NUM_STRINGS;
+    st->byte_offset = 0;
+    st->grapheme_idx = 0;
+}
+
+static void prev_string(struct cursor_state *st) {
+    st->string_idx = (st->string_idx + NUM_STRINGS - 1) % NUM_STRINGS;
+    st->byte_offset = 0;
+    st->grapheme_idx = 0;
+}
+
+static void jump_start(struct cursor_state *st) {
+    st->byte_offset = 0;
+    st->grapheme_idx = 0;
+}
+
+static void jump_end(struct cursor_state *st) {
+    const struct test_string *ts = &TEST_STRINGS[st->string_idx];
+    if (ts->length == 0) return;
+    /* Walk forward to find last grapheme */
+    size_t off = 0, prev_off = 0, idx = 0;
+    while (off < ts->length) {
+        prev_off = off;
+        off = utf8_next_grapheme(ts->data, ts->length, off);
+        if (off < ts->length) idx++;
+    }
+    st->byte_offset = prev_off;
+    st->grapheme_idx = idx;
+}
+
+/* ============================================================================
+ * Interactive mode
+ * ============================================================================ */
+
+static void run_interactive(void) {
+    if (!isatty(STDIN_FILENO)) {
+        fprintf(stderr, "cursor_walk: interactive mode requires a terminal\n");
+        exit(1);
+    }
+
+    enable_raw_mode();
+
+    struct cursor_state st = {0, 0, 0, 0, 0, 0};
+
+    for (;;) {
+        draw_screen(&st);
+        enum key_code key = read_key();
+        switch (key) {
+            case KEY_RIGHT: advance_grapheme(&st); break;
+            case KEY_LEFT:  retreat_grapheme(&st); break;
+            case KEY_DOWN:  next_string(&st); break;
+            case KEY_UP:    prev_string(&st); break;
+            case KEY_Q:     return;
+            case KEY_B:     st.show_bytes = !st.show_bytes; break;
+            case KEY_P:     st.show_props = !st.show_props; break;
+            case KEY_V:     st.show_verify = !st.show_verify; break;
+            case KEY_HOME:  jump_start(&st); break;
+            case KEY_END:   jump_end(&st); break;
+            default: break;
+        }
     }
 }
 
@@ -185,7 +471,7 @@ static void display_string(const struct test_string *ts) {
 static int verify_string(const struct test_string *ts, int string_idx) {
     if (ts->length == 0) {
         printf("[SKIP] String %2d: %-40s (empty)\n", string_idx, ts->label);
-        return 0; /* skip, not failure */
+        return 0;
     }
 
     /* Forward pass: collect boundaries */
@@ -199,7 +485,7 @@ static int verify_string(const struct test_string *ts, int string_idx) {
             fwd[fwd_count++] = off;
     }
 
-    /* Backward pass: collect boundaries in reverse */
+    /* Backward pass */
     size_t bwd[MAX_BOUNDARIES];
     size_t bwd_count = 0;
     off = ts->length;
@@ -223,10 +509,7 @@ static int verify_string(const struct test_string *ts, int string_idx) {
         ok = 0;
     } else {
         for (size_t i = 0; i < fwd_count; i++) {
-            if (fwd[i] != bwd[i]) {
-                ok = 0;
-                break;
-            }
+            if (fwd[i] != bwd[i]) { ok = 0; break; }
         }
     }
 
@@ -235,86 +518,58 @@ static int verify_string(const struct test_string *ts, int string_idx) {
         for (size_t i = 0; i + 1 < fwd_count; i++) {
             size_t next = utf8_next_grapheme(ts->data, ts->length, fwd[i]);
             size_t back = utf8_prev_grapheme(ts->data, ts->length, next);
-            if (back != fwd[i]) {
-                ok = 0;
-                break;
-            }
+            if (back != fwd[i]) { ok = 0; break; }
         }
     }
 
     size_t graphemes = fwd_count > 0 ? fwd_count - 1 : 0;
 
     if (ok) {
-        printf("[PASS] String %2d: %-40s (%zu bytes, %zu graphemes, %zu boundaries)\n",
-               string_idx, ts->label, ts->length, graphemes, fwd_count);
+        printf("[PASS] String %2d: %-40s (%zu bytes, %zu graphemes)\n",
+               string_idx, ts->label, ts->length, graphemes);
         return 0;
     } else if (ts->is_invalid) {
-        printf("[WARN] String %2d: %-40s boundary mismatch (invalid UTF-8, expected)\n",
+        printf("[WARN] String %2d: %-40s boundary mismatch (invalid UTF-8)\n",
                string_idx, ts->label);
-        printf("       forward boundaries (%zu):", fwd_count);
-        for (size_t i = 0; i < fwd_count && i < 20; i++) printf(" %zu", fwd[i]);
-        printf("\n       backward boundaries (%zu):", bwd_count);
-        for (size_t i = 0; i < bwd_count && i < 20; i++) printf(" %zu", bwd[i]);
-        printf("\n");
-        return 0; /* warn, not fail */
+        return 0;
     } else {
         printf("[FAIL] String %2d: %-40s boundary mismatch!\n",
                string_idx, ts->label);
-        printf("       forward boundaries (%zu):", fwd_count);
+        printf("       fwd(%zu):", fwd_count);
         for (size_t i = 0; i < fwd_count && i < 20; i++) printf(" %zu", fwd[i]);
-        printf("\n       backward boundaries (%zu):", bwd_count);
+        printf("\n       bwd(%zu):", bwd_count);
         for (size_t i = 0; i < bwd_count && i < 20; i++) printf(" %zu", bwd[i]);
         printf("\n");
         return 1;
     }
 }
 
-int main(int argc, char *argv[]) {
-    int verify_mode = 0;
-
-    for (int i = 1; i < argc; i++) {
-        if (strcmp(argv[i], "--verify") == 0) {
-            verify_mode = 1;
-        }
-    }
-
-    if (verify_mode) {
-        printf("gstr-cursor-walk --verify | Unicode %s | %zu test strings\n",
-               GSTR_UNICODE_VERSION, (size_t)NUM_STRINGS);
-        printf("============================================================\n");
-
-        int failures = 0;
-        int passed = 0;
-        int skipped = 0;
-        (void)0; /* all warnings counted as passes */
-
-        for (size_t i = 0; i < NUM_STRINGS; i++) {
-            int result = verify_string(&TEST_STRINGS[i], (int)(i + 1));
-            if (result) {
-                failures++;
-            } else {
-                if (TEST_STRINGS[i].length == 0) {
-                    skipped++;
-                } else {
-                    passed++;
-                }
-            }
-        }
-
-        printf("============================================================\n");
-        printf("Results: %d passed, %d failed, %d skipped\n",
-               passed, failures, skipped);
-
-        return failures > 0 ? 1 : 0;
-    }
-
-    /* Display mode */
-    printf("gstr-cursor-walk | Unicode %s | %zu test strings\n",
+static int run_verify(void) {
+    printf("gstr-cursor-walk --verify | Unicode %s | %zu test strings\n",
            GSTR_UNICODE_VERSION, (size_t)NUM_STRINGS);
+    printf("============================================================\n");
 
+    int failures = 0, passed = 0;
     for (size_t i = 0; i < NUM_STRINGS; i++) {
-        display_string(&TEST_STRINGS[i]);
+        int result = verify_string(&TEST_STRINGS[i], (int)(i + 1));
+        if (result) failures++;
+        else passed++;
     }
 
+    printf("============================================================\n");
+    printf("Results: %d passed, %d failed\n", passed, failures);
+    return failures > 0 ? 1 : 0;
+}
+
+/* ============================================================================
+ * Main
+ * ============================================================================ */
+
+int main(int argc, char *argv[]) {
+    for (int i = 1; i < argc; i++) {
+        if (strcmp(argv[i], "--verify") == 0)
+            return run_verify();
+    }
+    run_interactive();
     return 0;
 }
