@@ -371,6 +371,14 @@ gstrtrim(buffer, sizeof(buffer), text, len);
 printf("[%s]\n", buffer);  // "[hello world]"
 ```
 
+Unicode whitespace is also handled (NO-BREAK SPACE, IDEOGRAPHIC SPACE, etc):
+
+```c
+const char *unicode_ws = "\xc2\xa0 hello \xe3\x80\x80";  // NBSP + space + hello + IDEOGRAPHIC SPACE
+gstrtrim(buffer, sizeof(buffer), unicode_ws, strlen(unicode_ws));
+printf("[%s]\n", buffer);  // "[hello]"
+```
+
 ### Changing Case
 
 **Problem:** Convert to lowercase or uppercase.
@@ -572,19 +580,19 @@ printf("First vowel: %c\n", *vowel);  // 'a'
 
 ```c
 uint32_t codepoint;
-int bytes_consumed;
+size_t bytes_consumed;
 
 // Decode ASCII
 bytes_consumed = utf8_decode("A", 1, &codepoint);
-printf("U+%04X (%d byte)\n", codepoint, bytes_consumed);  // U+0041 (1 byte)
+printf("U+%04X (%zu byte)\n", codepoint, bytes_consumed);  // U+0041 (1 byte)
 
 // Decode Chinese character
 bytes_consumed = utf8_decode("中", 3, &codepoint);
-printf("U+%04X (%d bytes)\n", codepoint, bytes_consumed);  // U+4E2D (3 bytes)
+printf("U+%04X (%zu bytes)\n", codepoint, bytes_consumed);  // U+4E2D (3 bytes)
 
 // Decode emoji
 bytes_consumed = utf8_decode("😀", 4, &codepoint);
-printf("U+%04X (%d bytes)\n", codepoint, bytes_consumed);  // U+1F600 (4 bytes)
+printf("U+%04X (%zu bytes)\n", codepoint, bytes_consumed);  // U+1F600 (4 bytes)
 ```
 
 ### Encoding to UTF-8
@@ -593,15 +601,15 @@ printf("U+%04X (%d bytes)\n", codepoint, bytes_consumed);  // U+1F600 (4 bytes)
 
 ```c
 char buffer[UTF8_MAX_BYTES];  // Always 4 bytes max
-int bytes_written;
+size_t bytes_written;
 
 // Encode ASCII
 bytes_written = utf8_encode('A', buffer);
-printf("Bytes: %d\n", bytes_written);  // 1
+printf("Bytes: %zu\n", bytes_written);  // 1
 
 // Encode emoji
 bytes_written = utf8_encode(0x1F600, buffer);
-printf("Bytes: %d\n", bytes_written);  // 4
+printf("Bytes: %zu\n", bytes_written);  // 4
 
 // Now buffer contains the UTF-8 bytes
 ```
@@ -611,7 +619,7 @@ printf("Bytes: %d\n", bytes_written);  // 4
 **Problem:** Check if input is valid UTF-8.
 
 ```c
-int error_offset;
+size_t error_offset;
 
 // Valid UTF-8
 if (utf8_valid("Hello 世界", 12, NULL)) {
@@ -620,8 +628,9 @@ if (utf8_valid("Hello 世界", 12, NULL)) {
 
 // Invalid UTF-8
 const char *bad = "Hello \x80\x81 world";  // Invalid bytes
-if (!utf8_valid(bad, 14, &error_offset)) {
-    printf("Invalid at byte %d\n", error_offset);  // 6
+size_t error_pos;
+if (!utf8_valid(bad, 14, &error_pos)) {
+    printf("Invalid at byte %zu\n", error_pos);  // 6
 }
 ```
 
@@ -633,8 +642,8 @@ if (!utf8_valid(bad, 14, &error_offset)) {
 // Family emoji: 1 grapheme, but 7 codepoints
 const char *family = "👨‍👩‍👧";
 
-int codepoints = utf8_cpcount(family, 18);
-printf("Codepoints: %d\n", codepoints);  // 7 (👨 + ZWJ + 👩 + ZWJ + 👧 = 5 emoji + 2 ZWJ)
+size_t codepoints = utf8_cpcount(family, 18);
+printf("Codepoints: %zu\n", codepoints);  // 7 (👨 + ZWJ + 👩 + ZWJ + 👧 = 5 emoji + 2 ZWJ)
 ```
 
 ### Navigating by Codepoint
@@ -643,14 +652,14 @@ printf("Codepoints: %d\n", codepoints);  // 7 (👨 + ZWJ + 👩 + ZWJ + 👧 = 
 
 ```c
 const char *text = "A中😀";
-int len = 8;  // 1 + 3 + 4 bytes
-int offset = 0;
+size_t len = 8;  // 1 + 3 + 4 bytes
+size_t offset = 0;
 
 while (offset < len) {
     uint32_t cp;
     utf8_decode(text + offset, len - offset, &cp);
-    printf("U+%04X at byte %d\n", cp, offset);
-    
+    printf("U+%04X at byte %zu\n", cp, offset);
+
     offset = utf8_next(text, len, offset);
 }
 // U+0041 at byte 0
@@ -664,13 +673,13 @@ while (offset < len) {
 
 ```c
 const char *text = "e\xCC\x81 👨‍👩‍👧";  // "é" (decomposed) + space + family emoji
-int len = 22;
-int offset = 0;
-int grapheme = 0;
+size_t len = 22;
+size_t offset = 0;
+size_t grapheme = 0;
 
 while (offset < len) {
-    int next = utf8_next_grapheme(text, len, offset);
-    printf("Grapheme %d: bytes %d-%d\n", grapheme, offset, next);
+    size_t next = utf8_next_grapheme(text, len, offset);
+    printf("Grapheme %zu: bytes %zu-%zu\n", grapheme, offset, next);
     offset = next;
     grapheme++;
 }
@@ -706,15 +715,15 @@ printf("'\\n' width: %d\n", utf8_cpwidth('\n'));  // -1
 
 ```c
 const char *text = "Hello世界";  // 5 + 2 + 2 = 9 columns
-int len = 11;  // 5 + 3 + 3 bytes
+size_t len = 11;  // 5 + 3 + 3 bytes
 
 // Truncate to 7 columns
-int cut = utf8_truncate(text, len, 7);
-printf("Truncated: %.*s\n", cut, text);  // "Hello世" (5+2=7 cols)
+size_t cut = utf8_truncate(text, len, 7);
+printf("Truncated: %.*s\n", (int)cut, text);  // "Hello世" (5+2=7 cols)
 
 // Truncate to 6 columns (can't fit 世, which needs 2)
 cut = utf8_truncate(text, len, 6);
-printf("Truncated: %.*s\n", cut, text);  // "Hello" (only 5 cols fit)
+printf("Truncated: %.*s\n", (int)cut, text);  // "Hello" (only 5 cols fit)
 ```
 
 
@@ -728,14 +737,14 @@ printf("Truncated: %.*s\n", cut, text);  // "Hello" (only 5 cols fit)
 ```
 
 
-### UTF-8 Layer (14 functions)
+### UTF-8 Layer (13 functions)
 
 #### Encoding/Decoding
 
 | Function | Description |
 |----------|-------------|
-| `utf8_decode(bytes, len, *cp)` | Decode UTF-8 → codepoint. Returns bytes consumed (1-4), 0 on error. |
-| `utf8_encode(codepoint, buffer)` | Encode codepoint → UTF-8. Returns bytes written (1-4), 0 on error. |
+| `utf8_decode(bytes, len, *cp)` | Decode UTF-8 → codepoint. Returns bytes consumed (1-4), 0 on error. All sizes are `size_t`. |
+| `utf8_encode(codepoint, buffer)` | Encode codepoint → UTF-8. Returns bytes written (1-4), 0 on error. Returns `size_t`. |
 
 #### Validation
 
@@ -970,17 +979,17 @@ Extract next token from string, updating `*stringp` and `*lenp`. Stores token le
 ```c
 size_t gstrltrim(char *dst, size_t dst_size, const char *src, size_t src_len);
 ```
-Copy src to dst, removing leading ASCII whitespace. Returns bytes written.
+Copy src to dst, removing leading whitespace. Returns bytes written. Recognizes all 25 Unicode White\_Space codepoints (including NO-BREAK SPACE, IDEOGRAPHIC SPACE, etc). Use `gstr_is_whitespace_ascii()` if you need ASCII-only behavior.
 
 ```c
 size_t gstrrtrim(char *dst, size_t dst_size, const char *src, size_t src_len);
 ```
-Copy src to dst, removing trailing ASCII whitespace. Returns bytes written.
+Copy src to dst, removing trailing whitespace. Returns bytes written.
 
 ```c
 size_t gstrtrim(char *dst, size_t dst_size, const char *src, size_t src_len);
 ```
-Copy src to dst, removing leading and trailing ASCII whitespace. Returns bytes written.
+Copy src to dst, removing leading and trailing whitespace. Returns bytes written.
 
 
 #### Transformation Functions
@@ -1079,15 +1088,16 @@ Center string by padding both sides to reach `target_cols` terminal columns. Ret
 ### Using Make
 
 ```bash
-make              # Build library and single-header
-make test         # Run tests with static library
-make test-single  # Run tests with single-header
-make test-all     # Run all tests
-make install      # Install to /usr/local
+make              # Build all test binaries
+make test         # Build and run all tests (340 tests across 4 suites)
+make build-test   # Build test binaries without running
+make run-test     # Run previously built tests
+make cursor-walk  # Build the interactive grapheme diagnostic tool
+make install      # Install header to /usr/local/include + pkg-config
 make clean        # Clean build artifacts
 ```
 
-### Using the Static Library
+### Installation
 
 After `make install`:
 
@@ -1095,7 +1105,19 @@ After `make install`:
 #include <gstr.h>
 ```
 
-Compile with: `gcc -o myprogram myprogram.c -lgstr`
+Compile with: `gcc -o myprogram myprogram.c` (header-only, no library to link)
+
+Or use pkg-config: `gcc $(pkg-config --cflags gstr) -o myprogram myprogram.c`
+
+### Diagnostic Tool
+
+The `cursor_walk` tool lets you interactively navigate grapheme clusters with arrow keys:
+
+```bash
+make cursor-walk
+./tools/cursor_walk            # Interactive TUI (arrow keys to navigate)
+./tools/cursor_walk --verify   # Batch verification of forward/backward consistency
+```
 
 
 ## FAQ
