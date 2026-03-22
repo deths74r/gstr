@@ -8,6 +8,7 @@ test/test_grapheme_walk
 test/test_utf8_layer
 test/test_edge_cases
 test/test_mcdc_grapheme_break
+tools/cursor_walk
 *.db
 *.db-shm
 *.db-wal

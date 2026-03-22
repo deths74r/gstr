@@ -71,6 +71,16 @@ run-test: build-test
 test: run-test
 
 # ============================================================================
+# Tools
+# ============================================================================
+tools/cursor_walk: tools/cursor_walk.c $(HEADER)
+	$(CC) $(CFLAGS_DEBUG) -I$(INCDIR) $< -o $@
+
+cursor-walk: tools/cursor_walk
+
+.PHONY: cursor-walk
+
+# ============================================================================
 # pkg-config
 # ============================================================================
 gstr.pc: gstr.pc.in
@@ -98,6 +108,7 @@ clean:
 	rm -f $(TESTDIR)/test_utf8_layer
 	rm -f $(TESTDIR)/test_edge_cases
 	rm -f $(TESTDIR)/test_mcdc_grapheme_break
+	rm -f tools/cursor_walk
 	rm -f *.db-shm *.db-wal
 	rm -rf scripts/.unicode_cache/
 	rm -f gstr.pc
