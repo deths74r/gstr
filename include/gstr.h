@@ -1320,10 +1320,15 @@ static inline int utf8_next(const char *text, int length, int offset) {
 /*
  * Returns the byte offset of the previous UTF-8 character. Scans backwards
  * from the given offset to find the start of the preceding character.
+ * The length parameter is the total byte length of the valid memory region.
+ * If offset > length, offset is clamped to length.
  */
-static inline int utf8_prev(const char *text, int offset) {
-  if (!text || offset <= 0) {
+static inline int utf8_prev(const char *text, int length, int offset) {
+  if (!text || length <= 0 || offset <= 0) {
     return 0;
+  }
+  if (offset > length) {
+    offset = length;
   }
   int pos = offset - 1;
   int limit = (offset > 4) ? offset - 4 : 0;
@@ -1395,15 +1400,23 @@ static inline int utf8_next_grapheme(const char *text, int length, int offset) {
 }
 
 /*
- * Returns the byte offset of the previous grapheme cluster. Scans backwards
- * and applies UAX #29 grapheme break rules to find the cluster boundary.
+ * Returns the byte offset of the previous grapheme cluster boundary. Scans
+ * backwards and applies UAX #29 grapheme break rules to find the boundary.
+ * The length parameter is the total byte length of the valid memory region.
+ * If offset > length, offset is clamped to length.
+ *
+ * Note: Results are undefined for grapheme clusters exceeding
+ * GRAPHEME_MAX_BACKTRACK (128) codepoints (e.g., pathological zalgo text).
  */
-static inline int utf8_prev_grapheme(const char *text, int offset) {
-  if (!text || offset <= 0) {
+static inline int utf8_prev_grapheme(const char *text, int length, int offset) {
+  if (!text || length <= 0 || offset <= 0) {
     return 0;
   }
+  if (offset > length) {
+    offset = length;
+  }
 
-  int prev_start = utf8_prev(text, offset);
+  int prev_start = utf8_prev(text, length, offset);
   if (prev_start == 0 && offset > 0) {
     return 0;
   }
@@ -1411,7 +1424,7 @@ static inline int utf8_prev_grapheme(const char *text, int offset) {
   int scan_start = prev_start;
   int remaining = GRAPHEME_MAX_BACKTRACK;
   while (remaining > 0 && scan_start > 0) {
-    int prev = utf8_prev(text, scan_start);
+    int prev = utf8_prev(text, length, scan_start);
     if (prev == scan_start)
       break;
     scan_start = prev;
