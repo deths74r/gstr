@@ -1,0 +1,2 @@
+# Tell GitHub linguist that all header files in this project are C, not C++
+*.h linguist-language=C
