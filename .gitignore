@@ -4,7 +4,18 @@ test/test_gstr
 test/test_gstr_stress
 test/test_new_functions_stress
 test/test_single
+test/test_grapheme_walk
+test/test_utf8_layer
+test/test_edge_cases
+test/test_mcdc_grapheme_break
+tools/cursor_walk
 *.db
+*.db-shm
+*.db-wal
+gstr.pc
+
+# Unicode data cache
+scripts/.unicode_cache/
 
 # Sift agent memory (per-project database)
 .sift/

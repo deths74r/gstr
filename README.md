@@ -748,7 +748,7 @@ printf("Truncated: %.*s\n", cut, text);  // "Hello" (only 5 cols fit)
 | Function | Description |
 |----------|-------------|
 | `utf8_next(text, len, offset)` | Byte offset of next codepoint. |
-| `utf8_prev(text, offset)` | Byte offset of previous codepoint. |
+| `utf8_prev(text, len, offset)` | Byte offset of previous codepoint. |
 | `utf8_cpcount(text, len)` | Count codepoints in string. |
 
 #### Grapheme Navigation
@@ -756,7 +756,7 @@ printf("Truncated: %.*s\n", cut, text);  // "Hello" (only 5 cols fit)
 | Function | Description |
 |----------|-------------|
 | `utf8_next_grapheme(text, len, offset)` | Byte offset of next grapheme cluster boundary. |
-| `utf8_prev_grapheme(text, offset)` | Byte offset of previous grapheme cluster boundary. |
+| `utf8_prev_grapheme(text, len, offset)` | Byte offset of previous grapheme cluster boundary. |
 
 #### Display Width
 

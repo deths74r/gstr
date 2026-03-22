@@ -692,7 +692,7 @@ TEST(gstrrstr_empty_needle) {
   const char *haystack = "hello";
   const char *p = gstrrstr(haystack, 5, "", 0);
   ASSERT_NOT_NULL(p);
-  ASSERT(p == haystack + 5); /* Points to end */
+  ASSERT(p == haystack); /* Returns haystack, consistent with gstrstr */
 }
 
 TEST(gstrrstr_emoji) {
@@ -932,6 +932,69 @@ TEST(gstrtrim_emoji) {
   ASSERT(memcmp(buf, EMOJI_SIMPLE, EMOJI_SIMPLE_LEN) == 0);
 }
 
+/* Unicode whitespace tests */
+
+TEST(gstr_is_whitespace_unicode_nbsp) {
+  /* U+00A0 NO-BREAK SPACE = C2 A0 */
+  ASSERT(gstr_is_whitespace("\xC2\xA0", 2));
+}
+
+TEST(gstr_is_whitespace_unicode_ideographic) {
+  /* U+3000 IDEOGRAPHIC SPACE = E3 80 80 */
+  ASSERT(gstr_is_whitespace("\xE3\x80\x80", 3));
+}
+
+TEST(gstr_is_whitespace_unicode_emspace) {
+  /* U+2003 EM SPACE = E2 80 83 */
+  ASSERT(gstr_is_whitespace("\xE2\x80\x83", 3));
+}
+
+TEST(gstr_is_whitespace_unicode_nel) {
+  /* U+0085 NEXT LINE = C2 85 */
+  ASSERT(gstr_is_whitespace("\xC2\x85", 2));
+}
+
+TEST(gstr_is_whitespace_ascii_compat) {
+  /* ASCII whitespace still works */
+  ASSERT(gstr_is_whitespace(" ", 1));
+  ASSERT(gstr_is_whitespace("\t", 1));
+  ASSERT(gstr_is_whitespace("\n", 1));
+}
+
+TEST(gstr_is_whitespace_non_whitespace) {
+  /* U+2010 HYPHEN is not whitespace */
+  ASSERT(!gstr_is_whitespace("\xE2\x80\x90", 3));
+  /* Regular ASCII letter */
+  ASSERT(!gstr_is_whitespace("A", 1));
+}
+
+TEST(gstrtrim_unicode_whitespace) {
+  char buf[64];
+  /* U+00A0 + "Hello" + U+3000 */
+  const char src[] = "\xC2\xA0Hello\xE3\x80\x80";
+  size_t n = gstrtrim(buf, sizeof(buf), src, sizeof(src) - 1);
+  ASSERT_EQ_SIZE(n, 5);
+  ASSERT_STR_EQ(buf, "Hello");
+}
+
+TEST(gstrtrim_mixed_whitespace) {
+  char buf[64];
+  /* tab + U+2003(EM SPACE) + "ok" + U+200A(HAIR SPACE) + newline */
+  const char src[] = "\t\xE2\x80\x83ok\xE2\x80\x8A\n";
+  size_t n = gstrtrim(buf, sizeof(buf), src, sizeof(src) - 1);
+  ASSERT_EQ_SIZE(n, 2);
+  ASSERT_STR_EQ(buf, "ok");
+}
+
+TEST(gstr_is_whitespace_ascii_fn) {
+  /* gstr_is_whitespace_ascii rejects Unicode whitespace */
+  ASSERT(!gstr_is_whitespace_ascii("\xC2\xA0", 2));
+  ASSERT(!gstr_is_whitespace_ascii("\xE3\x80\x80", 3));
+  /* but accepts ASCII whitespace */
+  ASSERT(gstr_is_whitespace_ascii(" ", 1));
+  ASSERT(gstr_is_whitespace_ascii("\t", 1));
+}
+
 /* ============================================================================
  * gstrrev Tests
  * ============================================================================
@@ -986,9 +1049,9 @@ TEST(gstrrev_family) {
 TEST(gstrrev_buffer_overflow) {
   char buf[4];
   size_t n = gstrrev(buf, sizeof(buf), "hello", 5);
-  /* Can fit 3 chars + null */
+  /* Can fit 3 chars + null; first 3 graphemes reversed */
   ASSERT_EQ_SIZE(n, 3);
-  ASSERT_STR_EQ(buf, "oll"); /* Last 3 chars reversed */
+  ASSERT_STR_EQ(buf, "leh"); /* First 3 chars "hel" reversed */
 }
 
 /* ============================================================================
@@ -1142,6 +1205,54 @@ TEST(gstrwidth_flag) {
 TEST(gstrwidth_skin_tone) {
   /* Emoji with skin tone modifier should be 2 columns */
   ASSERT_EQ_SIZE(gstrwidth(WAVE_SKIN, WAVE_SKIN_LEN), 2);
+}
+
+/* Emoji presentation width tests (VS16, keycap, VS15) */
+
+TEST(gstrwidth_keycap) {
+  /* 1️⃣ = U+0031 U+FE0F U+20E3 - keycap sequence = 2 columns */
+  ASSERT_EQ_SIZE(gstrwidth("1\xEF\xB8\x8F\xE2\x83\xA3", 7), 2);
+  /* #️⃣ = U+0023 U+FE0F U+20E3 - keycap hash = 2 columns */
+  ASSERT_EQ_SIZE(gstrwidth("#\xEF\xB8\x8F\xE2\x83\xA3", 7), 2);
+  /* *️⃣ = U+002A U+FE0F U+20E3 - keycap asterisk = 2 columns */
+  ASSERT_EQ_SIZE(gstrwidth("*\xEF\xB8\x8F\xE2\x83\xA3", 7), 2);
+  /* 1⃣ = U+0031 U+20E3 - keycap without VS16 (edge case) = 2 columns */
+  ASSERT_EQ_SIZE(gstrwidth("1\xE2\x83\xA3", 4), 2);
+}
+
+TEST(gstrwidth_vs16_emoji) {
+  /* ❤️ = U+2764 U+FE0F - text-default ExtPict + VS16 = 2 columns */
+  ASSERT_EQ_SIZE(gstrwidth("\xE2\x9D\xA4\xEF\xB8\x8F", 6), 2);
+  /* ☠️ = U+2620 U+FE0F - skull and crossbones + VS16 = 2 columns */
+  ASSERT_EQ_SIZE(gstrwidth("\xE2\x98\xA0\xEF\xB8\x8F", 6), 2);
+  /* ✈️ = U+2708 U+FE0F - airplane + VS16 = 2 columns */
+  ASSERT_EQ_SIZE(gstrwidth("\xE2\x9C\x88\xEF\xB8\x8F", 6), 2);
+  /* ↔️ = U+2194 U+FE0F - left-right arrow + VS16 = 2 columns */
+  ASSERT_EQ_SIZE(gstrwidth("\xE2\x86\x94\xEF\xB8\x8F", 6), 2);
+  /* ©️ = U+00A9 U+FE0F - copyright sign + VS16 = 2 columns */
+  ASSERT_EQ_SIZE(gstrwidth("\xC2\xA9\xEF\xB8\x8F", 5), 2);
+}
+
+TEST(gstrwidth_vs15_text) {
+  /* ❤︎ = U+2764 U+FE0E - text presentation via VS15 = 1 column */
+  ASSERT_EQ_SIZE(gstrwidth("\xE2\x9D\xA4\xEF\xB8\x8E", 6), 1);
+}
+
+TEST(gstrwidth_extpict_already_wide) {
+  /* ☕️ = U+2615 U+FE0F - already-wide ExtPict + VS16 = still 2 */
+  ASSERT_EQ_SIZE(gstrwidth("\xE2\x98\x95\xEF\xB8\x8F", 6), 2);
+  /* ☕ = U+2615 bare - already EAW wide = 2 */
+  ASSERT_EQ_SIZE(gstrwidth("\xE2\x98\x95", 3), 2);
+}
+
+TEST(gstrwidth_vs16_non_extpict) {
+  /* A️ = U+0041 U+FE0F - non-ExtPict + VS16 = 1 column */
+  ASSERT_EQ_SIZE(gstrwidth("A\xEF\xB8\x8F", 4), 1);
+}
+
+TEST(gstrwidth_bare_extpict) {
+  /* ❤ = U+2764 bare - text-default ExtPict without VS16 = 1 column */
+  ASSERT_EQ_SIZE(gstrwidth("\xE2\x9D\xA4", 3), 1);
 }
 
 /* ============================================================================
@@ -1446,15 +1557,15 @@ TEST(utf8_encode_multibyte) {
 }
 
 TEST(utf8_valid_ok) {
-  int err;
+  size_t err;
   ASSERT(utf8_valid("Hello", 5, &err) == 1);
 }
 
 TEST(utf8_valid_bad) {
-  int err;
+  size_t err;
   /* Invalid continuation byte */
   ASSERT(utf8_valid("\xFF\x00", 2, &err) == 0);
-  ASSERT_EQ(err, 0);
+  ASSERT_EQ_SIZE(err, 0);
 }
 
 TEST(utf8_cpcount_basic) {
@@ -1666,6 +1777,15 @@ int main(void) {
   RUN(gstrtrim_tabs_and_newlines);
   RUN(gstrtrim_only_whitespace);
   RUN(gstrtrim_emoji);
+  RUN(gstr_is_whitespace_unicode_nbsp);
+  RUN(gstr_is_whitespace_unicode_ideographic);
+  RUN(gstr_is_whitespace_unicode_emspace);
+  RUN(gstr_is_whitespace_unicode_nel);
+  RUN(gstr_is_whitespace_ascii_compat);
+  RUN(gstr_is_whitespace_non_whitespace);
+  RUN(gstrtrim_unicode_whitespace);
+  RUN(gstrtrim_mixed_whitespace);
+  RUN(gstr_is_whitespace_ascii_fn);
 
   printf("\ngstrrev Tests:\n");
   RUN(gstrrev_ascii);
@@ -1702,6 +1822,12 @@ int main(void) {
   RUN(gstrwidth_zwj_family);
   RUN(gstrwidth_flag);
   RUN(gstrwidth_skin_tone);
+  RUN(gstrwidth_keycap);
+  RUN(gstrwidth_vs16_emoji);
+  RUN(gstrwidth_vs15_text);
+  RUN(gstrwidth_extpict_already_wide);
+  RUN(gstrwidth_vs16_non_extpict);
+  RUN(gstrwidth_bare_extpict);
 
   printf("\ngstrwtrunc Tests:\n");
   RUN(gstrwtrunc_ascii);
