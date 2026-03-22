@@ -692,7 +692,7 @@ TEST(gstrrstr_empty_needle) {
   const char *haystack = "hello";
   const char *p = gstrrstr(haystack, 5, "", 0);
   ASSERT_NOT_NULL(p);
-  ASSERT(p == haystack + 5); /* Points to end */
+  ASSERT(p == haystack); /* Returns haystack, consistent with gstrstr */
 }
 
 TEST(gstrrstr_emoji) {
@@ -1049,9 +1049,9 @@ TEST(gstrrev_family) {
 TEST(gstrrev_buffer_overflow) {
   char buf[4];
   size_t n = gstrrev(buf, sizeof(buf), "hello", 5);
-  /* Can fit 3 chars + null */
+  /* Can fit 3 chars + null; first 3 graphemes reversed */
   ASSERT_EQ_SIZE(n, 3);
-  ASSERT_STR_EQ(buf, "oll"); /* Last 3 chars reversed */
+  ASSERT_STR_EQ(buf, "leh"); /* First 3 chars "hel" reversed */
 }
 
 /* ============================================================================

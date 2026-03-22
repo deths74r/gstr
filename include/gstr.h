@@ -986,7 +986,7 @@ static const struct unicode_range INCB_CONSONANTS[] = {
  * Checks whether a Unicode codepoint falls within any of the given ranges
  * using binary search.
  */
-static int unicode_range_contains(uint32_t codepoint,
+static inline int unicode_range_contains(uint32_t codepoint,
                                   const struct unicode_range *ranges,
                                   int count) {
   int low = 0;
@@ -1007,7 +1007,7 @@ static int unicode_range_contains(uint32_t codepoint,
 /*
  * Determines the Grapheme Cluster Break (GCB) property for a codepoint.
  */
-static enum gcb_property get_gcb(uint32_t cp) {
+static inline enum gcb_property get_gcb(uint32_t cp) {
   /* Hangul syllables: LV and LVT are computed algorithmically */
   if (cp >= HANGUL_SBASE && cp <= HANGUL_SEND) {
     return ((cp - HANGUL_SBASE) % HANGUL_TCOUNT == 0) ? GCB_LV : GCB_LVT;
@@ -1032,7 +1032,7 @@ static enum gcb_property get_gcb(uint32_t cp) {
 /*
  * Checks if a codepoint is an "Extended Pictographic" character.
  */
-static int is_extended_pictographic(uint32_t cp) {
+static inline int is_extended_pictographic(uint32_t cp) {
   return unicode_range_contains(cp, EXTENDED_PICTOGRAPHIC_RANGES,
                                 EXTENDED_PICTOGRAPHIC_COUNT);
 }
@@ -1040,7 +1040,7 @@ static int is_extended_pictographic(uint32_t cp) {
 /*
  * Checks if a codepoint is an Indic Conjunct Break (InCB) Linker character.
  */
-static int is_incb_linker(uint32_t cp) {
+static inline int is_incb_linker(uint32_t cp) {
   int low = 0;
   int high = INCB_LINKER_COUNT - 1;
   while (low <= high) {
@@ -1059,7 +1059,7 @@ static int is_incb_linker(uint32_t cp) {
 /*
  * Checks if a codepoint is an Indic Conjunct Break (InCB) Consonant.
  */
-static int is_incb_consonant(uint32_t cp) {
+static inline int is_incb_consonant(uint32_t cp) {
   return unicode_range_contains(cp, INCB_CONSONANTS, INCB_CONSONANT_COUNT);
 }
 
@@ -1067,7 +1067,7 @@ static int is_incb_consonant(uint32_t cp) {
  * Determine if there's a grapheme cluster break between two codepoints.
  * Implements UAX #29 extended grapheme cluster rules.
  */
-static int is_grapheme_break(enum gcb_property prev_prop,
+static inline int is_grapheme_break(enum gcb_property prev_prop,
                              enum gcb_property curr_prop, int ri_count,
                              int in_ext_pict, uint32_t curr_cp,
                              int incb_state) {
@@ -1144,6 +1144,15 @@ static int is_grapheme_break(enum gcb_property prev_prop,
  * ============================================================================
  */
 
+/*
+ * Decodes a single UTF-8 character from the byte buffer.
+ * Returns the number of bytes consumed (1-4), or 0 if the buffer is
+ * empty/NULL. Writes the decoded codepoint to *codepoint.
+ *
+ * On invalid input (malformed sequence, overlong encoding, surrogate,
+ * or out-of-range value), writes UTF8_REPLACEMENT_CHAR (U+FFFD) to
+ * *codepoint and returns the number of bytes to skip (at least 1).
+ */
 static inline int utf8_decode(const char *bytes, int length,
                               uint32_t *codepoint) {
   if (length <= 0 || !bytes) {
@@ -1244,6 +1253,16 @@ static inline int utf8_encode(uint32_t codepoint, char *buffer) {
  * ============================================================================
  */
 
+/*
+ * Returns the display column width of a Unicode codepoint.
+ *   - 0 for null (U+0000), combining marks, and format characters.
+ *   - -1 for C0/C1 control characters (U+0001-U+001F, U+007F-U+009F).
+ *   - 2 for East Asian Wide/Fullwidth characters (CJK, etc.).
+ *   - 1 for all other printable characters.
+ *
+ * Note: This returns the width of a single codepoint, not a grapheme cluster.
+ * For grapheme-level width, use gstr_grapheme_width() or gstrwidth().
+ */
 static inline int utf8_cpwidth(uint32_t codepoint) {
   if (codepoint < 0x20) {
     if (codepoint == 0x00)
@@ -1307,6 +1326,14 @@ static inline int utf8_is_wide(uint32_t codepoint) {
  * ============================================================================
  */
 
+/*
+ * Returns the byte offset of the next UTF-8 codepoint after the one at
+ * `offset`. If text is NULL or offset >= length, returns length.
+ *
+ * Note: This navigates by codepoint, not grapheme. A single grapheme
+ * may span multiple codepoints. Use utf8_next_grapheme() for grapheme
+ * navigation.
+ */
 static inline int utf8_next(const char *text, int length, int offset) {
   if (!text || offset >= length) {
     return length;
@@ -1343,6 +1370,14 @@ static inline int utf8_prev(const char *text, int length, int offset) {
  * ============================================================================
  */
 
+/*
+ * Returns the byte offset of the next grapheme cluster boundary after
+ * the grapheme starting at `offset`. Implements UAX #29 extended
+ * grapheme cluster segmentation rules (GB3-GB13, GB999), including
+ * GB9c (Indic conjunct sequences) and GB11 (ZWJ emoji sequences).
+ *
+ * If text is NULL, offset >= length, or offset < 0, returns length.
+ */
 static inline int utf8_next_grapheme(const char *text, int length, int offset) {
   if (!text || offset >= length || offset < 0) {
     return length;
@@ -1451,6 +1486,14 @@ static inline int utf8_prev_grapheme(const char *text, int length, int offset) {
  * ============================================================================
  */
 
+/*
+ * Validates that the given byte sequence is well-formed UTF-8.
+ * Returns 1 if valid, 0 if any byte sequence is malformed.
+ * If text is NULL, returns 0 and sets *error_offset to 0.
+ *
+ * @param error_offset  [out] If non-NULL and validation fails, receives
+ *                      the byte offset of the first invalid sequence.
+ */
 static inline int utf8_valid(const char *text, int length, int *error_offset) {
   if (!text) {
     if (error_offset) {
@@ -1528,7 +1571,7 @@ static inline int utf8_truncate(const char *text, int length, int max_cols) {
 /*
  * Compares a single grapheme at position a with grapheme at position b.
  */
-static int gstr_cmp_grapheme(const char *a, size_t a_len, const char *b,
+static inline int gstr_cmp_grapheme(const char *a, size_t a_len, const char *b,
                              size_t b_len) {
   size_t min_len = a_len < b_len ? a_len : b_len;
   int result = memcmp(a, b, min_len);
@@ -1544,7 +1587,7 @@ static int gstr_cmp_grapheme(const char *a, size_t a_len, const char *b,
 /*
  * Converts ASCII uppercase to lowercase for case-insensitive comparison.
  */
-static char gstr_ascii_lower(char c) {
+static inline char gstr_ascii_lower(char c) {
   if (c >= 'A' && c <= 'Z')
     return (char)(c + ('a' - 'A'));
   return c;
@@ -1553,7 +1596,7 @@ static char gstr_ascii_lower(char c) {
 /*
  * Converts ASCII lowercase to uppercase.
  */
-static char gstr_ascii_upper(char c) {
+static inline char gstr_ascii_upper(char c) {
   if (c >= 'a' && c <= 'z')
     return (char)(c - ('a' - 'A'));
   return c;
@@ -1562,7 +1605,7 @@ static char gstr_ascii_upper(char c) {
 /*
  * Case-insensitive comparison of two byte sequences (ASCII only).
  */
-static int gstr_cmp_grapheme_icase(const char *a, size_t a_len, const char *b,
+static inline int gstr_cmp_grapheme_icase(const char *a, size_t a_len, const char *b,
                                    size_t b_len) {
   size_t min_len = a_len < b_len ? a_len : b_len;
   for (size_t i = 0; i < min_len; i++) {
@@ -1581,7 +1624,7 @@ static int gstr_cmp_grapheme_icase(const char *a, size_t a_len, const char *b,
 /*
  * Checks if grapheme g is in the set of graphemes.
  */
-static int gstr_grapheme_in_set(const char *g, size_t g_len, const char *set,
+static inline int gstr_grapheme_in_set(const char *g, size_t g_len, const char *set,
                                 size_t set_len) {
   int offset = 0;
   while ((size_t)offset < set_len) {
@@ -1600,7 +1643,7 @@ static int gstr_grapheme_in_set(const char *g, size_t g_len, const char *set,
  * Checks if a grapheme is ASCII whitespace (HT, LF, VT, FF, CR, SP).
  * Also handles the CR+LF grapheme cluster.
  */
-static int gstr_is_whitespace_ascii(const char *g, size_t g_len) {
+static inline int gstr_is_whitespace_ascii(const char *g, size_t g_len) {
   if (g_len == 2 && g[0] == '\r' && g[1] == '\n')
     return 1;
   if (g_len != 1)
@@ -1615,7 +1658,7 @@ static int gstr_is_whitespace_ascii(const char *g, size_t g_len) {
  * Handles single-codepoint graphemes and the CR+LF grapheme cluster.
  * Multi-codepoint graphemes (e.g., whitespace + combining mark) return 0.
  */
-static int gstr_is_whitespace(const char *g, size_t g_len) {
+static inline int gstr_is_whitespace(const char *g, size_t g_len) {
   if (!g || g_len == 0)
     return 0;
   /* CR+LF is a single grapheme cluster */
@@ -2167,14 +2210,14 @@ static inline const char *gstrrstr(const char *haystack, size_t h_len,
   if (!haystack || !needle)
     return NULL;
   if (n_len == 0)
-    return haystack + h_len;
+    return haystack;
   if (h_len == 0)
     return NULL;
 
   const char *last_match = NULL;
   size_t needle_graphemes = gstrlen(needle, n_len);
   if (needle_graphemes == 0)
-    return haystack + h_len;
+    return haystack;
 
   int h_off = 0;
 
@@ -2819,39 +2862,35 @@ static inline size_t gstrrev(char *dst, size_t dst_size, const char *src,
   if (!src || src_len == 0)
     return 0;
 
-  size_t grapheme_count = gstrlen(src, src_len);
-  if (grapheme_count == 0)
-    return 0;
-
-  int *offsets = malloc((grapheme_count + 1) * sizeof(int));
-  if (!offsets)
-    return 0;
-
+  /* Pass 1 (forward): measure how many complete graphemes fit in dst */
+  size_t total_bytes = 0;
+  size_t n_graphemes = 0;
   int offset = 0;
-  size_t idx = 0;
-
-  while ((size_t)offset < src_len && idx < grapheme_count) {
-    offsets[idx++] = offset;
-    offset = utf8_next_grapheme(src, (int)src_len, offset);
-  }
-  offsets[grapheme_count] = offset;
-
-  size_t written = 0;
-
-  for (size_t i = grapheme_count; i > 0; i--) {
-    int start = offsets[i - 1];
-    int end = offsets[i];
-    size_t glen = (size_t)(end - start);
-
-    if (written + glen >= dst_size) {
+  while ((size_t)offset < src_len) {
+    int next = utf8_next_grapheme(src, (int)src_len, offset);
+    size_t glen = (size_t)(next - offset);
+    if (total_bytes + glen >= dst_size)
       break;
-    }
+    total_bytes += glen;
+    n_graphemes++;
+    offset = next;
+  }
 
+  if (n_graphemes == 0)
+    return 0;
+
+  /* Pass 2 (backward): copy graphemes in reverse order into dst.
+   * Walk backward from the end of the measured region (total_bytes). */
+  size_t written = 0;
+  int current_end = (int)total_bytes;
+  for (size_t i = 0; i < n_graphemes; i++) {
+    int start = utf8_prev_grapheme(src, (int)src_len, current_end);
+    size_t glen = (size_t)(current_end - start);
     memcpy(dst + written, src + start, glen);
     written += glen;
+    current_end = start;
   }
 
-  free(offsets);
   dst[written] = '\0';
   return written;
 }
