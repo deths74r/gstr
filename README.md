@@ -737,7 +737,7 @@ printf("Truncated: %.*s\n", (int)cut, text);  // "Hello" (only 5 cols fit)
 ```
 
 
-### UTF-8 Layer (13 functions)
+### UTF-8 Layer (15 functions)
 
 #### Encoding/Decoding
 
@@ -776,6 +776,13 @@ printf("Truncated: %.*s\n", (int)cut, text);  // "Hello" (only 5 cols fit)
 | `utf8_is_zerowidth(codepoint)` | Returns 1 if codepoint is zero-width (combining marks, ZWJ, etc). |
 | `utf8_is_wide(codepoint)` | Returns 1 if codepoint is wide (East_Asian_Width W or F). |
 | `utf8_truncate(text, len, max_cols)` | Byte offset to truncate at max display width. |
+
+#### Character Classification
+
+| Function | Description |
+|----------|-------------|
+| `gstr_is_unicode_punctuation(cp)` | Returns 1 if codepoint is Unicode punctuation or symbol (General_Category P\* or S\*). Matches CommonMark 0.31.2 definition. For ASCII, matches `ispunct()`. |
+| `gstr_is_whitespace_cp(cp)` | Returns 1 if codepoint has the Unicode White\_Space property (25 codepoints). Codepoint-level variant of `gstr_is_whitespace()`. |
 
 
 ### Grapheme String Layer (46 functions)

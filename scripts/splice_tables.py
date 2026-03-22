@@ -119,6 +119,7 @@ def main():
         ("GCB_RANGES", "GCB_RANGES"),
         ("INCB_LINKERS", "INCB_LINKERS"),
         ("INCB_CONSONANTS", "INCB_CONSONANTS"),
+        ("UNICODE_PUNCT_SYMBOL_RANGES", "UNICODE_PUNCT_SYMBOL_RANGES"),
     ]
 
     # Process tables in reverse order (so line numbers don't shift)

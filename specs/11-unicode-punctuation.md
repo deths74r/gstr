@@ -526,3 +526,453 @@ static inline int gstr_is_whitespace_cp(uint32_t cp) {
 | `gstr_is_whitespace_cp()` | Codepoint-level whitespace check (switch, 25 cases) |
 | `gen_unicode_tables.py` changes | New generator functions for P* and P*+S* tables |
 | `test/test_unicode_punct.c` | MC/DC test suite (~40 test cases) |
+
+---
+
+## Addendum: Review Board Changes (2026-03-22)
+
+The following amendments were produced by a four-person review panel (3 senior C
+developers + 1 parsing/Unicode expert) after reading the original spec against
+the gstr codebase and the current CommonMark specification. The original spec
+text above is preserved unchanged. Each change includes a justification.
+
+---
+
+### Change 1: Update the CommonMark definition to version 0.31.2
+
+**Affects:** Motivation (lines 9-13), Part A.3 (lines 69-77)
+
+The spec quotes the CommonMark **0.30** definition of "Unicode punctuation
+character," which lists only P\* categories and defers to `ispunct()` for ASCII.
+CommonMark **0.31** (changelog: "Add symbols to unicode punctuation — Titus
+Wormer") changed this to:
+
+> A **Unicode punctuation character** is a character in the Unicode P
+> (punctuation) or S (symbol) general categories.
+
+and retained the separate definition:
+
+> An **ASCII punctuation character** is !, ", #, $, %, &, ', (, ), \*, +, ,,
+> -, ., / (U+0021–U+002F), :, ;, <, =, >, ?, @ (U+003A–U+0040), [, \\, ],
+> ^, \_, \` (U+005B–U+0060), {, |, }, or ~ (U+007B–U+007E).
+
+**Justification:** The 0.31.2 definition explicitly requires P\*+S\*. The
+elaborate rationale in A.3 for why symbols should be included is now unnecessary
+— the spec simply requires it. All three major reference parsers (md4c, cmark,
+pulldown-cmark) already implement P\*+S\* in a single function. Citing the
+current spec avoids confusion for reviewers who check the source.
+
+---
+
+### Change 2: Drop the P\*-only function and table
+
+**Affects:** Scope (lines 19-26), Part A.3 recommendation (line 77), Part B.1
+(lines 123-131), Part B.2 (line 142), Part B.3 (lines 149-166), Part D.1
+`gen_punct_only_table` (lines 373-394), Part E.2 size table (line 445),
+Summary table (lines 522, 524)
+
+**Remove:**
+- `gstr_is_unicode_punctuation(uint32_t cp)` (P\*-only function)
+- `UNICODE_PUNCT_RANGES[]` (P\*-only table, ~90 ranges / ~720 bytes)
+- `gen_punct_only_table()` in gen\_unicode\_tables.py
+
+**Keep only:**
+- `UNICODE_PUNCT_SYMBOL_RANGES[]` (P\*+S\* combined table, ~250 ranges)
+- One public function (name revised in Change 3 below)
+
+**Justification (three independent reasons):**
+
+1. **No consumer.** The spec identifies md4s as the sole consumer, and md4s uses
+   the P\*+S\* variant. No use case for P\*-only exists. Under CommonMark 0.31.2,
+   "Unicode punctuation character" *is* P\*+S\*, so a P\*-only function does not
+   match any specification.
+
+2. **The P\*-only function has a documentation bug that reveals a foot-gun.**
+   Section B.3 (lines 157-161) claims the P\*-only function "returns 1 for all
+   characters where C's `ispunct()` would return non-zero." This is false. Nine
+   ASCII characters that `ispunct()` accepts have S\* (Symbol) categories, not
+   P\*:
+
+   | Char | Codepoint | General\_Category |
+   |------|-----------|-------------------|
+   | `$`  | U+0024    | Sc (Currency symbol) |
+   | `+`  | U+002B    | Sm (Math symbol) |
+   | `<`  | U+003C    | Sm |
+   | `=`  | U+003D    | Sm |
+   | `>`  | U+003E    | Sm |
+   | `^`  | U+005E    | Sk (Modifier symbol) |
+   | `` ` `` | U+0060 | Sk |
+   | `\|` | U+007C    | Sm |
+   | `~`  | U+007E    | Sm |
+
+   A P\*-only function would return 0 for `$`, `+`, `<`, `>`, `^`, `` ` ``,
+   `|`, `~` — surprising any caller who expects `ispunct()` parity. Shipping
+   this invites misuse.
+
+3. **No parser precedent.** md4c, cmark, and pulldown-cmark all provide a single
+   P\*+S\* function. None offer a P\*-only variant.
+
+**Revised binary size impact:**
+
+| Component | Estimated Size |
+|-----------|---------------|
+| `UNICODE_PUNCT_SYMBOL_RANGES[]` (~250 ranges) | ~2,000 bytes |
+| Public function (inline + ASCII fast path) | ~60 bytes |
+| **Total** | **~2.1 KB** |
+
+---
+
+### Change 3: Rename the public function
+
+**Affects:** All references to `gstr_is_unicode_punct_or_symbol`
+
+**Rename to:** `gstr_is_unicode_punctuation(uint32_t cp)`
+
+**Justification:** Under CommonMark 0.31.2, "Unicode punctuation character"
+*is defined as* P\*+S\*. The function that implements this definition should
+carry the spec's own name. The "or\_symbol" qualifier is technically accurate
+but misleading — it implies the function goes beyond what the spec requires,
+when in fact it is the exact match.
+
+With the P\*-only variant removed (Change 2), there is no naming collision.
+
+**Naming prefix discussion:** The review panel noted that existing codepoint-level
+functions use the `utf8_` prefix (`utf8_is_zerowidth`, `utf8_is_wide`), while
+`gstr_` is used for grapheme-level functions taking `(const char*, size_t)`.
+The new function takes `uint32_t cp`, which fits the `utf8_` pattern.
+
+However, this is a public API naming decision for the gstr maintainer.
+Either of these is acceptable:
+
+- `gstr_is_unicode_punctuation(uint32_t cp)` — consistent with the new
+  `gstr_is_whitespace_cp` and groups all classification functions under `gstr_`
+- `utf8_is_punctuation(uint32_t cp)` — consistent with existing codepoint-level
+  functions `utf8_is_zerowidth` and `utf8_is_wide`
+
+The md4s team has no preference. We leave this to the gstr maintainer.
+
+---
+
+### Change 4: Fix `splice_tables.py` integration approach
+
+**Affects:** Part D.3 (lines 420-427)
+
+The spec proposes `BEGIN GENERATED` / `END GENERATED` marker comments. This
+pattern does **not exist** anywhere in the gstr codebase. The existing
+`splice_tables.py` uses a different mechanism:
+
+1. `gen_unicode_tables.py` emits section headers like
+   `/* ====== TABLE_NAME ====== */`
+2. `splice_tables.py` uses `parse_generated_sections()` to split output by
+   these `======` delimiters
+3. `find_table_bounds()` locates tables in `gstr.h` by regex-matching the
+   `static const struct ... TABLE_NAME[]` declaration, then walks backward
+   to the comment block and forward to the `#define` macro
+4. It replaces the entire block with the generated section
+
+**Revised approach:** Follow the existing pattern:
+
+1. In `gen_unicode_tables.py`, emit:
+   ```
+   /* ====== UNICODE_PUNCT_SYMBOL_RANGES ====== */
+   ```
+   before the generated table output.
+
+2. In `splice_tables.py`, add an entry to the table map so the
+   existing `find_table_bounds()` can locate and replace the table
+   automatically.
+
+**Justification:** Introducing a second splicing mechanism creates maintenance
+burden and confusion. The existing mechanism already handles this case.
+
+---
+
+### Change 5: Use existing `merge_adjacent_no_prop()` instead of new function
+
+**Affects:** Part D.1, `merge_adjacent_ranges()` definition (lines 397-413)
+
+The spec defines a new `merge_adjacent_ranges()` function that is functionally
+identical to the existing `merge_adjacent_no_prop()` in `gen_unicode_tables.py`.
+The existing function already takes `(start, end)` pairs and merges
+unconditionally. Both `generate_eaw_wide()` and `generate_zero_width()` already
+use it.
+
+**Revised approach:** Call `merge_adjacent_no_prop()` directly. Delete the
+redundant `merge_adjacent_ranges()` definition.
+
+Also: section B.1 (line 92, 99) calls `merge_adjacent(ranges)`, which is the
+*property-preserving* variant — it only merges ranges with matching properties.
+Since P\* and S\* ranges have different property values (Pc, Pd, Sc, Sm, etc.),
+using `merge_adjacent()` would produce suboptimal merging (adjacent Sc and Po
+ranges would not merge). The correct call is `merge_adjacent_no_prop()` after
+stripping properties, as section D.1 does.
+
+**Justification:** Code reuse. Avoids introducing a third merge function with
+identical behavior to an existing one.
+
+---
+
+### Change 6: Fix test table errors and expand test coverage
+
+**Affects:** Part C (lines 228-324)
+
+#### 6a. Fix misplaced test cases
+
+The "Unicode symbols (S\* categories)" table (lines 283-296) contains two
+entries that are actually P\* (Punctuation), not S\* (Symbol):
+
+| Codepoint | Char | Actual Category | Listed Under |
+|-----------|------|-----------------|--------------|
+| U+00A7 | `§` | Po (Other punctuation) | "S\* categories" |
+| U+2020 | `†` | Po (Other punctuation) | "S\* categories" |
+
+**Fix:** Move these to the "Unicode punctuation (P\* categories)" table.
+Replace them in the symbols table with actual S\* characters:
+- U+00A2 (`¢`) — Sc (Currency symbol)
+- U+00AC (`¬`) — Sm (Math symbol)
+
+#### 6b. Fix U+FFFF expected value
+
+The boundary cases table (line 316) lists `max_bmp` (U+FFFF) with expected
+value "depends." U+FFFF has General\_Category Cn (noncharacter). The expected
+value is **0**.
+
+#### 6c. Add missing boundary tests for MC/DC completeness
+
+The ASCII fast path is a 4-way disjunction where each arm is a conjunction.
+Full MC/DC requires testing the "just before" side of each range:
+
+| Test | Input | Expected | Purpose |
+|------|-------|----------|---------|
+| before\_range2 | `0x0039` (`9`) | 0 | Just before second ASCII range |
+| before\_range3 | `0x005A` (`Z`) | 0 | Just before third ASCII range |
+| before\_range4 | `0x007A` (`z`) | 0 | Just before fourth ASCII range |
+
+#### 6d. Add ASCII-to-binary-search transition test
+
+| Test | Input | Expected | Purpose |
+|------|-------|----------|---------|
+| first\_non\_ascii | `0x0080` | 0 | First codepoint handled by binary search (Cc) |
+
+#### 6e. Add exhaustive ASCII verification test
+
+Since the ASCII range is small (128 codepoints) and the fast path is a
+performance-critical optimization, add an exhaustive loop:
+
+```c
+TEST(ascii_exhaustive) {
+    for (uint32_t cp = 0; cp < 0x80; cp++) {
+        int expected = (cp >= 0x21 && cp <= 0x2F) ||
+                       (cp >= 0x3A && cp <= 0x40) ||
+                       (cp >= 0x5B && cp <= 0x60) ||
+                       (cp >= 0x7B && cp <= 0x7E);
+        ASSERT_EQ(gstr_is_unicode_punctuation(cp), expected);
+    }
+}
+```
+
+This catches any off-by-one error and is only 128 iterations.
+
+#### 6f. Add `ispunct()` compatibility test
+
+The spec claims the function covers all `ispunct()` characters. Verify directly:
+
+```c
+TEST(ispunct_compatibility) {
+    for (int cp = 1; cp < 128; cp++) {
+        int c_result = ispunct(cp) ? 1 : 0;
+        ASSERT_EQ(gstr_is_unicode_punctuation(cp), c_result);
+    }
+}
+```
+
+#### 6g. Add fast-path vs table agreement test
+
+Verify the hardcoded ASCII fast path matches the generated range table:
+
+```c
+TEST(fast_path_matches_table) {
+    for (uint32_t cp = 0; cp < 0x80; cp++) {
+        int fast = gstr_is_unicode_punctuation(cp);
+        int table = unicode_range_contains(cp, UNICODE_PUNCT_SYMBOL_RANGES,
+                                           UNICODE_PUNCT_SYMBOL_COUNT);
+        ASSERT_EQ(fast, table);
+    }
+}
+```
+
+#### 6h. Add whitespace/punctuation mutual exclusion test
+
+Verify no codepoint is classified as both whitespace and punctuation:
+
+```c
+TEST(whitespace_punct_mutual_exclusion) {
+    uint32_t ws[] = {0x09, 0x0A, 0x0D, 0x20, 0x85, 0xA0,
+                     0x1680, 0x2000, 0x2003, 0x2028, 0x3000};
+    for (size_t i = 0; i < sizeof(ws)/sizeof(ws[0]); i++) {
+        ASSERT_EQ(gstr_is_unicode_punctuation(ws[i]), 0);
+    }
+}
+```
+
+#### 6i. Add supplementary plane tests
+
+| Test | Input | Expected | Category | Purpose |
+|------|-------|----------|----------|---------|
+| aegean\_separator | `0x10100` | 1 | Po | Punctuation in SMP |
+| musical\_symbol | `0x1D100` | 1 | So | Symbol in SMP |
+| replacement\_char | `0xFFFD` | 1 | So | Practically important for malformed input |
+
+#### 6j. Add range-gap verification tests
+
+Verify the table generator did not over-merge across gaps:
+
+| Test | Input | Expected | Category | Purpose |
+|------|-------|----------|----------|---------|
+| feminine\_ordinal | `0x00AA` | 0 | Lo | Gap between P\*/S\* ranges |
+| soft\_hyphen | `0x00AD` | 0 | Cf | Gap in 0x00A0-0x00BF area |
+| micro\_sign | `0x00B5` | 0 | Ll | Between Sk and Po ranges |
+
+#### 6k. Add defensive out-of-range test
+
+```c
+TEST(out_of_range) {
+    ASSERT_EQ(gstr_is_unicode_punctuation(0x110000), 0);
+    ASSERT_EQ(gstr_is_unicode_punctuation(0xFFFFFFFF), 0);
+}
+```
+
+**Revised test count:** ~65-70 test cases (up from ~40).
+
+**Justification:** The original test suite lacks differential P\*/S\* coverage
+(moot after Change 2 removes the P\*-only function, but the `ispunct()`
+compatibility test replaces this need), has incorrect expected values, and
+misses boundary conditions needed for MC/DC of the ASCII fast path.
+
+---
+
+### Change 7: Document whitespace definition discrepancy
+
+**Affects:** Part F.2, `gstr_is_whitespace_cp` (lines 496-513)
+
+The proposed `gstr_is_whitespace_cp` covers **25 codepoints** (the full Unicode
+`White_Space` property). The CommonMark 0.31.2 definition of "Unicode whitespace
+character" covers only **17 codepoints** ({U+0009, U+000A, U+000C, U+000D}
+union General\_Category Zs).
+
+The 8 extra codepoints in `gstr_is_whitespace_cp` that are NOT in the
+CommonMark definition:
+
+| Codepoint | Name | Unicode Property |
+|-----------|------|------------------|
+| U+000B | VERTICAL TAB | White\_Space but not in CM definition |
+| U+0085 | NEXT LINE (NEL) | White\_Space but not Zs |
+| U+2028 | LINE SEPARATOR | Zl, not Zs |
+| U+2029 | PARAGRAPH SEPARATOR | Zp, not Zs |
+
+Note: U+000B, U+0085, U+2028, U+2029 are also in the existing
+`gstr_is_whitespace()` function, so this is consistent with gstr's
+existing behavior, not a new discrepancy.
+
+**Recommendation:** This is acceptable for practical use. The four extra
+codepoints are extremely rare in markdown source text, and treating them as
+whitespace is more conservative (errs toward allowing emphasis rather than
+blocking it). However, the function's documentation should note this:
+
+```c
+/*
+ * Returns 1 if the codepoint has the Unicode White_Space property.
+ *
+ * Note: this covers 25 codepoints (the full Unicode White_Space set),
+ * which is a superset of CommonMark's "Unicode whitespace character"
+ * definition (17 codepoints: Zs + TAB + LF + FF + CR). The extra
+ * codepoints (VT, NEL, LS, PS) are rare in practice.
+ */
+```
+
+**Justification:** The md4s team should know the difference exists so they can
+make an informed decision. In practice all reference parsers vary slightly
+here (cmark includes FF but not VT/NEL/LS/PS), and the difference is
+unlikely to affect real-world documents.
+
+---
+
+### Change 8: Specify behavior for out-of-range codepoints
+
+**Affects:** Part B.3 function documentation
+
+Add to the function contract:
+
+```c
+/*
+ * Codepoints beyond U+10FFFF return 0. The function accepts the full
+ * uint32_t range without undefined behavior.
+ */
+```
+
+**Justification:** The implementation naturally handles this (binary search
+won't find a match), but the contract should be explicit so callers don't
+need to bounds-check before calling. This matches the behavior of the
+existing `unicode_range_contains()` function.
+
+---
+
+### Change 9: Use `test_macros.h` and separate test file
+
+**Affects:** Part C.3 (lines 322-324)
+
+The spec says "follow the existing test conventions in `test/test_gstr.c`."
+However, newer test files (`test_utf8_layer.c`, `test_edge_cases.c`,
+`test_mcdc_grapheme_break.c`) use the shared `test/test_macros.h` header,
+while `test_gstr.c` has its own inline copy of the macros.
+
+**Revised guidance:**
+
+- Create `test/test_unicode_punct.c` as a **separate file** (consistent with
+  the convention of separate files for distinct subsystems)
+- Use `#include "test_macros.h"` (not inline macros)
+- Add to the Makefile's `build-test`, `run-test`, and `clean` targets following
+  the existing pattern:
+  ```makefile
+  $(TESTDIR)/test_unicode_punct: $(TESTDIR)/test_unicode_punct.c \
+      $(TESTDIR)/test_macros.h $(HEADER)
+  	$(CC) $(CFLAGS_DEBUG) -I$(INCDIR) -I$(TESTDIR) $< -o $@
+  ```
+
+**Justification:** Follows the current convention established by the newer
+test files, not the legacy convention in `test_gstr.c`.
+
+---
+
+### Change 10: Note on Default\_Ignorable\_Code\_Point
+
+**Affects:** Part A (informational addition)
+
+Characters with the `Default_Ignorable_Code_Point` property — including U+200B
+(ZERO WIDTH SPACE), U+200C/U+200D (ZWNJ/ZWJ), U+2060 (WORD JOINER), and
+U+FEFF (BOM) — are not in P\*, S\*, or White\_Space. Under the three-way
+classification they fall into the "other" (letter/digit/mark) bucket.
+
+This matches what all existing CommonMark parsers do. The CommonMark spec does
+not mention Default\_Ignorable characters. No action is required, but the md4s
+team should be aware of this edge case when integrating.
+
+---
+
+### Revised Summary Table
+
+After applying all changes above, the deliverables are:
+
+| Deliverable | Description |
+|-------------|-------------|
+| `UNICODE_PUNCT_SYMBOL_RANGES[]` | Static range table, P\*+S\* categories (~250 ranges, ~2KB) |
+| `gstr_is_unicode_punctuation()` | ASCII fast path + binary search on P\*+S\* table |
+| `gstr_is_whitespace_cp()` | Codepoint-level whitespace check (switch, 25 cases) |
+| `gen_unicode_tables.py` changes | New generator function for P\*+S\* table, using existing `merge_adjacent_no_prop()` |
+| `splice_tables.py` changes | Add table map entry following existing `======` section pattern |
+| `test/test_unicode_punct.c` | MC/DC test suite (~65-70 test cases, using `test_macros.h`) |
+
+**Removed from original spec:**
+- `UNICODE_PUNCT_RANGES[]` (P\*-only table) — no consumer, foot-gun risk
+- `gstr_is_unicode_punct_or_symbol()` — renamed to `gstr_is_unicode_punctuation()`
+- `gen_punct_only_table()` — no longer needed
