@@ -1144,6 +1144,54 @@ TEST(gstrwidth_skin_tone) {
   ASSERT_EQ_SIZE(gstrwidth(WAVE_SKIN, WAVE_SKIN_LEN), 2);
 }
 
+/* Emoji presentation width tests (VS16, keycap, VS15) */
+
+TEST(gstrwidth_keycap) {
+  /* 1️⃣ = U+0031 U+FE0F U+20E3 - keycap sequence = 2 columns */
+  ASSERT_EQ_SIZE(gstrwidth("1\xEF\xB8\x8F\xE2\x83\xA3", 7), 2);
+  /* #️⃣ = U+0023 U+FE0F U+20E3 - keycap hash = 2 columns */
+  ASSERT_EQ_SIZE(gstrwidth("#\xEF\xB8\x8F\xE2\x83\xA3", 7), 2);
+  /* *️⃣ = U+002A U+FE0F U+20E3 - keycap asterisk = 2 columns */
+  ASSERT_EQ_SIZE(gstrwidth("*\xEF\xB8\x8F\xE2\x83\xA3", 7), 2);
+  /* 1⃣ = U+0031 U+20E3 - keycap without VS16 (edge case) = 2 columns */
+  ASSERT_EQ_SIZE(gstrwidth("1\xE2\x83\xA3", 4), 2);
+}
+
+TEST(gstrwidth_vs16_emoji) {
+  /* ❤️ = U+2764 U+FE0F - text-default ExtPict + VS16 = 2 columns */
+  ASSERT_EQ_SIZE(gstrwidth("\xE2\x9D\xA4\xEF\xB8\x8F", 6), 2);
+  /* ☠️ = U+2620 U+FE0F - skull and crossbones + VS16 = 2 columns */
+  ASSERT_EQ_SIZE(gstrwidth("\xE2\x98\xA0\xEF\xB8\x8F", 6), 2);
+  /* ✈️ = U+2708 U+FE0F - airplane + VS16 = 2 columns */
+  ASSERT_EQ_SIZE(gstrwidth("\xE2\x9C\x88\xEF\xB8\x8F", 6), 2);
+  /* ↔️ = U+2194 U+FE0F - left-right arrow + VS16 = 2 columns */
+  ASSERT_EQ_SIZE(gstrwidth("\xE2\x86\x94\xEF\xB8\x8F", 6), 2);
+  /* ©️ = U+00A9 U+FE0F - copyright sign + VS16 = 2 columns */
+  ASSERT_EQ_SIZE(gstrwidth("\xC2\xA9\xEF\xB8\x8F", 5), 2);
+}
+
+TEST(gstrwidth_vs15_text) {
+  /* ❤︎ = U+2764 U+FE0E - text presentation via VS15 = 1 column */
+  ASSERT_EQ_SIZE(gstrwidth("\xE2\x9D\xA4\xEF\xB8\x8E", 6), 1);
+}
+
+TEST(gstrwidth_extpict_already_wide) {
+  /* ☕️ = U+2615 U+FE0F - already-wide ExtPict + VS16 = still 2 */
+  ASSERT_EQ_SIZE(gstrwidth("\xE2\x98\x95\xEF\xB8\x8F", 6), 2);
+  /* ☕ = U+2615 bare - already EAW wide = 2 */
+  ASSERT_EQ_SIZE(gstrwidth("\xE2\x98\x95", 3), 2);
+}
+
+TEST(gstrwidth_vs16_non_extpict) {
+  /* A️ = U+0041 U+FE0F - non-ExtPict + VS16 = 1 column */
+  ASSERT_EQ_SIZE(gstrwidth("A\xEF\xB8\x8F", 4), 1);
+}
+
+TEST(gstrwidth_bare_extpict) {
+  /* ❤ = U+2764 bare - text-default ExtPict without VS16 = 1 column */
+  ASSERT_EQ_SIZE(gstrwidth("\xE2\x9D\xA4", 3), 1);
+}
+
 /* ============================================================================
  * Column-Width Truncation Tests (gstrwtrunc)
  * ============================================================================
@@ -1702,6 +1750,12 @@ int main(void) {
   RUN(gstrwidth_zwj_family);
   RUN(gstrwidth_flag);
   RUN(gstrwidth_skin_tone);
+  RUN(gstrwidth_keycap);
+  RUN(gstrwidth_vs16_emoji);
+  RUN(gstrwidth_vs15_text);
+  RUN(gstrwidth_extpict_already_wide);
+  RUN(gstrwidth_vs16_non_extpict);
+  RUN(gstrwidth_bare_extpict);
 
   printf("\ngstrwtrunc Tests:\n");
   RUN(gstrwtrunc_ascii);

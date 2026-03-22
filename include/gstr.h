@@ -1649,9 +1649,14 @@ static inline size_t gstrnlen(const char *s, size_t byte_len,
   return count;
 }
 
+/* Forward declaration for gstr_grapheme_width (defined later). */
+static inline size_t gstr_grapheme_width(const char *s, size_t byte_len,
+                                         int offset, int next);
+
 /*
  * Calculates the display width in terminal columns for a grapheme string.
- * Handles ZWJ sequences and regional indicator pairs (flags) as 2 columns.
+ * Handles ZWJ sequences, regional indicator pairs, emoji presentation (VS16),
+ * and keycap sequences as 2 columns.
  */
 static inline size_t gstrwidth(const char *s, size_t byte_len) {
   if (!s || byte_len == 0)
@@ -1662,40 +1667,7 @@ static inline size_t gstrwidth(const char *s, size_t byte_len) {
 
   while ((size_t)offset < byte_len) {
     int next = utf8_next_grapheme(s, (int)byte_len, offset);
-
-    /* Scan grapheme for special sequences */
-    int has_zwj = 0;
-    int regional_count = 0;
-    int cp_offset = offset;
-
-    while (cp_offset < next) {
-      uint32_t cp;
-      int cp_bytes = utf8_decode(s + cp_offset, (int)byte_len - cp_offset, &cp);
-      if (cp_bytes <= 0)
-        break;
-      if (cp == 0x200D) {
-        has_zwj = 1;
-      }
-      if (cp >= 0x1F1E6 && cp <= 0x1F1FF) {
-        regional_count++;
-      }
-      cp_offset += cp_bytes;
-    }
-
-    /* Apply heuristics for special emoji */
-    if (has_zwj || regional_count == 2) {
-      width += 2; /* ZWJ sequences and flags render as 2 columns */
-    } else {
-      /* Sum codepoint widths for regular graphemes */
-      cp_offset = offset;
-      while (cp_offset < next) {
-        int cw = utf8_charwidth(s, (int)byte_len, cp_offset);
-        if (cw > 0)
-          width += (size_t)cw;
-        cp_offset = utf8_next(s, (int)byte_len, cp_offset);
-      }
-    }
-
+    width += gstr_grapheme_width(s, byte_len, offset, next);
     offset = next;
   }
 
@@ -3341,22 +3313,42 @@ static inline size_t gstrpad(char *dst, size_t dst_size, const char *src,
 
 /**
  * Helper: Calculate column width of a single grapheme at the given offset.
- * Handles ZWJ sequences and regional indicator (flag) emoji.
+ * Handles ZWJ sequences, regional indicator (flag) emoji, emoji presentation
+ * via VS16 (U+FE0F), text presentation via VS15 (U+FE0E), and keycap
+ * sequences (base + U+FE0F + U+20E3).
  */
 static inline size_t gstr_grapheme_width(const char *s, size_t byte_len,
                                          int offset, int next) {
   /* Scan grapheme for special sequences */
   int has_zwj = 0;
+  int has_vs16 = 0;
+  int has_vs15 = 0;
+  int has_keycap = 0;
   int regional_count = 0;
+  uint32_t base_cp = 0;
   int cp_offset = offset;
+  int first = 1;
 
   while (cp_offset < next) {
     uint32_t cp;
     int cp_bytes = utf8_decode(s + cp_offset, (int)byte_len - cp_offset, &cp);
     if (cp_bytes <= 0)
       break;
+    if (first) {
+      base_cp = cp;
+      first = 0;
+    }
     if (cp == 0x200D) {
       has_zwj = 1;
+    }
+    if (cp == 0xFE0F) {
+      has_vs16 = 1;
+    }
+    if (cp == 0xFE0E) {
+      has_vs15 = 1;
+    }
+    if (cp == 0x20E3) {
+      has_keycap = 1;
     }
     if (cp >= 0x1F1E6 && cp <= 0x1F1FF) {
       regional_count++;
@@ -3367,6 +3359,20 @@ static inline size_t gstr_grapheme_width(const char *s, size_t byte_len,
   /* ZWJ sequences and flags render as 2 columns */
   if (has_zwj || regional_count == 2) {
     return 2;
+  }
+
+  /* Keycap sequences: base + FE0F + 20E3 -> width 2 */
+  if (has_keycap) {
+    return 2;
+  }
+
+  /* VS16 emoji presentation: ExtPict + FE0F (without VS15) -> width 2 */
+  if (has_vs16 && !has_vs15 && is_extended_pictographic(base_cp)) {
+    /* Only override if the base isn't already wide */
+    int base_width = utf8_cpwidth(base_cp);
+    if (base_width < 2) {
+      return 2;
+    }
   }
 
   /* Sum codepoint widths for regular graphemes */
