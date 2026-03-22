@@ -1,0 +1,8 @@
+prefix=@PREFIX@
+includedir=${prefix}/include
+
+Name: gstr
+Description: Grapheme-based string library for C (header-only)
+URL: https://github.com/edwardJedmonds/gstr
+Version: @VERSION@
+Cflags: -I${includedir}
