@@ -127,6 +127,97 @@ static const struct test_string TEST_STRINGS[] = {
     {"Full sentence",
      "Hello \xF0\x9F\x91\x8B\xF0\x9F\x8C\x8D world! \xE2\x9C\xA8",
      21, 0},
+
+    /* ====== Longer mixed strings ====== */
+
+    /* Chat message with emoji reactions */
+    {"Chat: emoji + CJK + flags",
+     "\xF0\x9F\x91\xA8\xE2\x80\x8D\xF0\x9F\x92\xBB "  /* man+laptop ZWJ */
+     "\xE4\xBB\x8A\xE6\x97\xA5\xE3\x81\xAF"            /* 今日は */
+     " \xF0\x9F\x87\xAF\xF0\x9F\x87\xB5"                /* JP flag */
+     " #\xEF\xB8\x8F\xE2\x83\xA3"                       /* keycap # */
+     " \xE2\x9D\xA4\xEF\xB8\x8F"                        /* red heart */
+     "!",
+     42, 0},
+
+    /* Hindi + Devanagari conjuncts + emoji */
+    {"Hindi sentence with conjuncts",
+     "\xE0\xA4\xA8\xE0\xA4\xAE"                          /* na ma */
+     "\xE0\xA4\xB8\xE0\xA5\x8D\xE0\xA4\xA4\xE0\xA5\x87" /* s+virama+te (conjunct) */
+     " \xF0\x9F\x99\x8F"                                  /* folded hands */
+     " \xE0\xA4\xB6\xE0\xA5\x81\xE0\xA4\xAD"             /* shu bha */
+     " \xE0\xA4\x95\xE0\xA5\x8D\xE0\xA4\xB7"             /* ksha conjunct */
+     "\xE0\xA4\xBE",                                      /* aa vowel sign */
+     41, 0},
+
+    /* Korean mixed Jamo + precomposed + Latin */
+    {"Korean: Jamo + precomposed + ASCII",
+     "\xE1\x84\x80\xE1\x85\xA1\xE1\x86\xA8"  /* Jamo L+V+T = 각 */
+     "\xEA\xB0\x80"                            /* precomposed 가 (LV) */
+     "\xEA\xB0\x81"                            /* precomposed 각 (LVT) */
+     " = gak ga gag",
+     25, 0},
+
+    /* Arabic RTL + Latin + emoji */
+    {"Arabic + Latin + emoji",
+     "\xD9\x85\xD8\xB1\xD8\xAD\xD8\xA8\xD8\xA7"  /* مرحبا */
+     " Hello "
+     "\xF0\x9F\x91\x8B\xF0\x9F\x8F\xBD"            /* waving hand + skin tone */
+     " \xF0\x9F\x87\xBA\xF0\x9F\x87\xB8"            /* US flag */
+     "\xF0\x9F\x87\xB8\xF0\x9F\x87\xA6",            /* SA flag */
+     35, 0},
+
+    /* Thai with combining marks (no word spaces) */
+    {"Thai: combining vowels + tone marks",
+     "\xE0\xB8\xAA\xE0\xB8\xA7\xE0\xB8\xB1"  /* สวั */
+     "\xE0\xB8\xAA\xE0\xB8\x94\xE0\xB8\xB5"  /* สดี */
+     "\xE0\xB8\x84\xE0\xB8\xA3\xE0\xB8\xB1"  /* ครั */
+     "\xE0\xB8\x9A",                           /* บ */
+     28, 0},
+
+    /* Stress: lots of emoji types in one string */
+    {"Emoji soup: ZWJ + flag + keycap + skin + VS16",
+     "\xF0\x9F\x91\xA8\xE2\x80\x8D\xF0\x9F\x91\xA9\xE2\x80\x8D\xF0\x9F\x91\xA7"  /* family MWG */
+     "\xF0\x9F\x87\xAC\xF0\x9F\x87\xA7"                                              /* GB flag */
+     "1\xEF\xB8\x8F\xE2\x83\xA3"                                                     /* keycap 1 */
+     "\xF0\x9F\x91\x8D\xF0\x9F\x8F\xBF"                                              /* thumbs up dark */
+     "\xE2\x98\x95\xEF\xB8\x8F"                                                      /* coffee VS16 */
+     "\xE2\x9D\xA4\xEF\xB8\x8E"                                                      /* heart VS15 (text) */
+     "\xF0\x9F\x98\x80",                                                              /* grinning face */
+     52, 0},
+
+    /* Combining mark stress: multiple diacritics on Latin */
+    {"Zalgo-lite: stacked diacritics",
+     "H\xCC\x81\xCC\xA7"                      /* H + acute + cedilla */
+     "e\xCC\x88\xCC\x83"                      /* e + diaeresis + tilde */
+     "l\xCC\xB2\xCC\xB3"                      /* l + underline + double underline */
+     "l\xCC\x8A"                               /* l + ring above */
+     "o\xCC\x81\xCC\x80\xCC\x82\xCC\x83",    /* o + acute + grave + circumflex + tilde */
+     25, 0},
+
+    /* Realistic terminal line: path + status + emoji */
+    {"Terminal: path + status + indicator",
+     "\xE2\x9C\x93 "                              /* checkmark + space */
+     "src/\xE4\xB8\xBB\xE8\xA6\x81.c"            /* src/主要.c */
+     " [200 OK] "
+     "\xF0\x9F\x9F\xA2"                           /* green circle */
+     " 42ms "
+     "\xF0\x9F\x87\xBA\xF0\x9F\x87\xB8",         /* US flag */
+     36, 0},
+
+    /* Everything at once: CRLF + control + wide + combining + emoji + Hangul */
+    {"Kitchen sink",
+     "A"
+     "\xCC\x81"                                    /* A + combining acute */
+     "\xE4\xB8\xAD"                               /* CJK 中 */
+     "\xEA\xB0\x80\xE1\x86\xA8"                   /* Hangul LV+T */
+     "\r\n"                                        /* CRLF (1 grapheme) */
+     "\xF0\x9F\x91\xA8\xE2\x80\x8D\xF0\x9F\x92\xBB" /* man+laptop ZWJ */
+     " "
+     "\xE2\x9D\xA4\xEF\xB8\x8F"                  /* red heart */
+     "!"
+     "\xF0\x9F\x87\xA9\xF0\x9F\x87\xAA",         /* DE flag */
+     40, 0},
 };
 
 #define NUM_STRINGS (sizeof(TEST_STRINGS) / sizeof(TEST_STRINGS[0]))
