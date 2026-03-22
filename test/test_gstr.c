@@ -932,6 +932,69 @@ TEST(gstrtrim_emoji) {
   ASSERT(memcmp(buf, EMOJI_SIMPLE, EMOJI_SIMPLE_LEN) == 0);
 }
 
+/* Unicode whitespace tests */
+
+TEST(gstr_is_whitespace_unicode_nbsp) {
+  /* U+00A0 NO-BREAK SPACE = C2 A0 */
+  ASSERT(gstr_is_whitespace("\xC2\xA0", 2));
+}
+
+TEST(gstr_is_whitespace_unicode_ideographic) {
+  /* U+3000 IDEOGRAPHIC SPACE = E3 80 80 */
+  ASSERT(gstr_is_whitespace("\xE3\x80\x80", 3));
+}
+
+TEST(gstr_is_whitespace_unicode_emspace) {
+  /* U+2003 EM SPACE = E2 80 83 */
+  ASSERT(gstr_is_whitespace("\xE2\x80\x83", 3));
+}
+
+TEST(gstr_is_whitespace_unicode_nel) {
+  /* U+0085 NEXT LINE = C2 85 */
+  ASSERT(gstr_is_whitespace("\xC2\x85", 2));
+}
+
+TEST(gstr_is_whitespace_ascii_compat) {
+  /* ASCII whitespace still works */
+  ASSERT(gstr_is_whitespace(" ", 1));
+  ASSERT(gstr_is_whitespace("\t", 1));
+  ASSERT(gstr_is_whitespace("\n", 1));
+}
+
+TEST(gstr_is_whitespace_non_whitespace) {
+  /* U+2010 HYPHEN is not whitespace */
+  ASSERT(!gstr_is_whitespace("\xE2\x80\x90", 3));
+  /* Regular ASCII letter */
+  ASSERT(!gstr_is_whitespace("A", 1));
+}
+
+TEST(gstrtrim_unicode_whitespace) {
+  char buf[64];
+  /* U+00A0 + "Hello" + U+3000 */
+  const char src[] = "\xC2\xA0Hello\xE3\x80\x80";
+  size_t n = gstrtrim(buf, sizeof(buf), src, sizeof(src) - 1);
+  ASSERT_EQ_SIZE(n, 5);
+  ASSERT_STR_EQ(buf, "Hello");
+}
+
+TEST(gstrtrim_mixed_whitespace) {
+  char buf[64];
+  /* tab + U+2003(EM SPACE) + "ok" + U+200A(HAIR SPACE) + newline */
+  const char src[] = "\t\xE2\x80\x83ok\xE2\x80\x8A\n";
+  size_t n = gstrtrim(buf, sizeof(buf), src, sizeof(src) - 1);
+  ASSERT_EQ_SIZE(n, 2);
+  ASSERT_STR_EQ(buf, "ok");
+}
+
+TEST(gstr_is_whitespace_ascii_fn) {
+  /* gstr_is_whitespace_ascii rejects Unicode whitespace */
+  ASSERT(!gstr_is_whitespace_ascii("\xC2\xA0", 2));
+  ASSERT(!gstr_is_whitespace_ascii("\xE3\x80\x80", 3));
+  /* but accepts ASCII whitespace */
+  ASSERT(gstr_is_whitespace_ascii(" ", 1));
+  ASSERT(gstr_is_whitespace_ascii("\t", 1));
+}
+
 /* ============================================================================
  * gstrrev Tests
  * ============================================================================
@@ -1714,6 +1777,15 @@ int main(void) {
   RUN(gstrtrim_tabs_and_newlines);
   RUN(gstrtrim_only_whitespace);
   RUN(gstrtrim_emoji);
+  RUN(gstr_is_whitespace_unicode_nbsp);
+  RUN(gstr_is_whitespace_unicode_ideographic);
+  RUN(gstr_is_whitespace_unicode_emspace);
+  RUN(gstr_is_whitespace_unicode_nel);
+  RUN(gstr_is_whitespace_ascii_compat);
+  RUN(gstr_is_whitespace_non_whitespace);
+  RUN(gstrtrim_unicode_whitespace);
+  RUN(gstrtrim_mixed_whitespace);
+  RUN(gstr_is_whitespace_ascii_fn);
 
   printf("\ngstrrev Tests:\n");
   RUN(gstrrev_ascii);

@@ -1597,9 +1597,10 @@ static int gstr_grapheme_in_set(const char *g, size_t g_len, const char *set,
 }
 
 /*
- * Checks if a grapheme is ASCII whitespace.
+ * Checks if a grapheme is ASCII whitespace (HT, LF, VT, FF, CR, SP).
+ * Also handles the CR+LF grapheme cluster.
  */
-static int gstr_is_whitespace(const char *g, size_t g_len) {
+static int gstr_is_whitespace_ascii(const char *g, size_t g_len) {
   if (g_len == 2 && g[0] == '\r' && g[1] == '\n')
     return 1;
   if (g_len != 1)
@@ -1607,6 +1608,55 @@ static int gstr_is_whitespace(const char *g, size_t g_len) {
   char c = g[0];
   return c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\v' ||
          c == '\f';
+}
+
+/*
+ * Checks if a grapheme is Unicode whitespace (all 25 White_Space codepoints).
+ * Handles single-codepoint graphemes and the CR+LF grapheme cluster.
+ * Multi-codepoint graphemes (e.g., whitespace + combining mark) return 0.
+ */
+static int gstr_is_whitespace(const char *g, size_t g_len) {
+  if (!g || g_len == 0)
+    return 0;
+  /* CR+LF is a single grapheme cluster */
+  if (g_len == 2 && g[0] == '\r' && g[1] == '\n')
+    return 1;
+  /* Decode the first codepoint */
+  uint32_t cp;
+  int bytes = utf8_decode(g, (int)g_len, &cp);
+  /* Only single-codepoint graphemes qualify as whitespace */
+  if ((size_t)bytes != g_len)
+    return 0;
+  switch (cp) {
+  case 0x0009: /* CHARACTER TABULATION (HT) */
+  case 0x000A: /* LINE FEED (LF) */
+  case 0x000B: /* LINE TABULATION (VT) */
+  case 0x000C: /* FORM FEED (FF) */
+  case 0x000D: /* CARRIAGE RETURN (CR) */
+  case 0x0020: /* SPACE */
+  case 0x0085: /* NEXT LINE (NEL) */
+  case 0x00A0: /* NO-BREAK SPACE */
+  case 0x1680: /* OGHAM SPACE MARK */
+  case 0x2000: /* EN QUAD */
+  case 0x2001: /* EM QUAD */
+  case 0x2002: /* EN SPACE */
+  case 0x2003: /* EM SPACE */
+  case 0x2004: /* THREE-PER-EM SPACE */
+  case 0x2005: /* FOUR-PER-EM SPACE */
+  case 0x2006: /* SIX-PER-EM SPACE */
+  case 0x2007: /* FIGURE SPACE */
+  case 0x2008: /* PUNCTUATION SPACE */
+  case 0x2009: /* THIN SPACE */
+  case 0x200A: /* HAIR SPACE */
+  case 0x2028: /* LINE SEPARATOR */
+  case 0x2029: /* PARAGRAPH SEPARATOR */
+  case 0x202F: /* NARROW NO-BREAK SPACE */
+  case 0x205F: /* MEDIUM MATHEMATICAL SPACE */
+  case 0x3000: /* IDEOGRAPHIC SPACE */
+    return 1;
+  default:
+    return 0;
+  }
 }
 
 /* ============================================================================
