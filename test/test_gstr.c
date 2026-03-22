@@ -1557,15 +1557,15 @@ TEST(utf8_encode_multibyte) {
 }
 
 TEST(utf8_valid_ok) {
-  int err;
+  size_t err;
   ASSERT(utf8_valid("Hello", 5, &err) == 1);
 }
 
 TEST(utf8_valid_bad) {
-  int err;
+  size_t err;
   /* Invalid continuation byte */
   ASSERT(utf8_valid("\xFF\x00", 2, &err) == 0);
-  ASSERT_EQ(err, 0);
+  ASSERT_EQ_SIZE(err, 0);
 }
 
 TEST(utf8_cpcount_basic) {

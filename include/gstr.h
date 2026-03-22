@@ -45,6 +45,15 @@ extern "C" {
 #define GSTR_UNICODE_VERSION_MINOR 0
 #define GSTR_UNICODE_VERSION_UPDATE 0
 
+/* gstr requires int to be at least 32 bits for byte offset arithmetic. */
+#if defined(__STDC_VERSION__) && __STDC_VERSION__ >= 201112L
+_Static_assert(sizeof(int) >= 4, "gstr requires sizeof(int) >= 4");
+#elif defined(__cplusplus) && __cplusplus >= 201103L
+static_assert(sizeof(int) >= 4, "gstr requires sizeof(int) >= 4");
+#else
+typedef char gstr_assert_int_at_least_32bit[sizeof(int) >= 4 ? 1 : -1];
+#endif
+
 /* Unicode replacement character (returned on decode errors) */
 #define UTF8_REPLACEMENT_CHAR 0xFFFD
 
@@ -1014,12 +1023,12 @@ static inline enum gcb_property get_gcb(uint32_t cp) {
   }
 
   /* Binary search in property table */
-  int low = 0;
-  int high = GCB_RANGE_COUNT - 1;
-  while (low <= high) {
-    int mid = (low + high) / 2;
+  size_t low = 0;
+  size_t high = GCB_RANGE_COUNT;
+  while (low < high) {
+    size_t mid = low + (high - low) / 2;
     if (cp < GCB_RANGES[mid].start) {
-      high = mid - 1;
+      high = mid;
     } else if (cp > GCB_RANGES[mid].end) {
       low = mid + 1;
     } else {
@@ -1041,12 +1050,12 @@ static inline int is_extended_pictographic(uint32_t cp) {
  * Checks if a codepoint is an Indic Conjunct Break (InCB) Linker character.
  */
 static inline int is_incb_linker(uint32_t cp) {
-  int low = 0;
-  int high = INCB_LINKER_COUNT - 1;
-  while (low <= high) {
-    int mid = (low + high) / 2;
+  size_t low = 0;
+  size_t high = INCB_LINKER_COUNT;
+  while (low < high) {
+    size_t mid = low + (high - low) / 2;
     if (cp < INCB_LINKERS[mid]) {
-      high = mid - 1;
+      high = mid;
     } else if (cp > INCB_LINKERS[mid]) {
       low = mid + 1;
     } else {
@@ -1153,7 +1162,7 @@ static inline int is_grapheme_break(enum gcb_property prev_prop,
  * or out-of-range value), writes UTF8_REPLACEMENT_CHAR (U+FFFD) to
  * *codepoint and returns the number of bytes to skip (at least 1).
  */
-static inline int utf8_decode(const char *bytes, int length,
+static inline size_t utf8_decode(const char *bytes, size_t length,
                               uint32_t *codepoint) {
   if (length <= 0 || !bytes) {
     *codepoint = UTF8_REPLACEMENT_CHAR;
@@ -1181,7 +1190,7 @@ static inline int utf8_decode(const char *bytes, int length,
     *codepoint = UTF8_REPLACEMENT_CHAR;
     return 1;
   }
-  if (length < sequence_length) {
+  if (length < (size_t)sequence_length) {
     *codepoint = UTF8_REPLACEMENT_CHAR;
     return 1;
   }
@@ -1219,7 +1228,7 @@ static inline int utf8_decode(const char *bytes, int length,
  * depending on the codepoint value. Returns the number of bytes written,
  * or 0 if the codepoint is invalid (surrogate or out of range).
  */
-static inline int utf8_encode(uint32_t codepoint, char *buffer) {
+static inline size_t utf8_encode(uint32_t codepoint, char *buffer) {
   if (!buffer) {
     return 0;
   }
@@ -1295,7 +1304,7 @@ static inline int utf8_cpwidth(uint32_t codepoint) {
  * Returns the display width of the character at the given byte offset.
  * Decodes the UTF-8 character and looks up its column width.
  */
-static inline int utf8_charwidth(const char *text, int length, int offset) {
+static inline int utf8_charwidth(const char *text, size_t length, size_t offset) {
   if (!text || offset >= length) {
     return 0;
   }
@@ -1334,13 +1343,13 @@ static inline int utf8_is_wide(uint32_t codepoint) {
  * may span multiple codepoints. Use utf8_next_grapheme() for grapheme
  * navigation.
  */
-static inline int utf8_next(const char *text, int length, int offset) {
+static inline size_t utf8_next(const char *text, size_t length, size_t offset) {
   if (!text || offset >= length) {
     return length;
   }
   uint32_t codepoint;
-  int char_bytes = utf8_decode(text + offset, length - offset, &codepoint);
-  int next_offset = offset + char_bytes;
+  size_t char_bytes = utf8_decode(text + offset, length - offset, &codepoint);
+  size_t next_offset = offset + char_bytes;
   return (next_offset > length) ? length : next_offset;
 }
 
@@ -1350,15 +1359,15 @@ static inline int utf8_next(const char *text, int length, int offset) {
  * The length parameter is the total byte length of the valid memory region.
  * If offset > length, offset is clamped to length.
  */
-static inline int utf8_prev(const char *text, int length, int offset) {
-  if (!text || length <= 0 || offset <= 0) {
+static inline size_t utf8_prev(const char *text, size_t length, size_t offset) {
+  if (!text || length == 0 || offset == 0) {
     return 0;
   }
   if (offset > length) {
     offset = length;
   }
-  int pos = offset - 1;
-  int limit = (offset > 4) ? offset - 4 : 0;
+  size_t pos = offset - 1;
+  size_t limit = (offset > 4) ? offset - 4 : 0;
   while (pos > limit && ((unsigned char)text[pos] & 0xC0) == 0x80) {
     pos--;
   }
@@ -1378,14 +1387,14 @@ static inline int utf8_prev(const char *text, int length, int offset) {
  *
  * If text is NULL, offset >= length, or offset < 0, returns length.
  */
-static inline int utf8_next_grapheme(const char *text, int length, int offset) {
-  if (!text || offset >= length || offset < 0) {
+static inline size_t utf8_next_grapheme(const char *text, size_t length, size_t offset) {
+  if (!text || offset >= length) {
     return length;
   }
 
   uint32_t prev_cp;
-  int bytes = utf8_decode(text + offset, length - offset, &prev_cp);
-  int next_offset = offset + bytes;
+  size_t bytes = utf8_decode(text + offset, length - offset, &prev_cp);
+  size_t next_offset = offset + bytes;
 
   if (next_offset >= length) {
     return length;
@@ -1443,34 +1452,34 @@ static inline int utf8_next_grapheme(const char *text, int length, int offset) {
  * Note: Results are undefined for grapheme clusters exceeding
  * GRAPHEME_MAX_BACKTRACK (128) codepoints (e.g., pathological zalgo text).
  */
-static inline int utf8_prev_grapheme(const char *text, int length, int offset) {
-  if (!text || length <= 0 || offset <= 0) {
+static inline size_t utf8_prev_grapheme(const char *text, size_t length, size_t offset) {
+  if (!text || length == 0 || offset == 0) {
     return 0;
   }
   if (offset > length) {
     offset = length;
   }
 
-  int prev_start = utf8_prev(text, length, offset);
+  size_t prev_start = utf8_prev(text, length, offset);
   if (prev_start == 0 && offset > 0) {
     return 0;
   }
 
-  int scan_start = prev_start;
+  size_t scan_start = prev_start;
   int remaining = GRAPHEME_MAX_BACKTRACK;
   while (remaining > 0 && scan_start > 0) {
-    int prev = utf8_prev(text, length, scan_start);
+    size_t prev = utf8_prev(text, length, scan_start);
     if (prev == scan_start)
       break;
     scan_start = prev;
     remaining--;
   }
 
-  int curr = scan_start;
-  int grapheme_start = scan_start;
+  size_t curr = scan_start;
+  size_t grapheme_start = scan_start;
 
   while (curr < offset) {
-    int next = utf8_next_grapheme(text, offset, curr);
+    size_t next = utf8_next_grapheme(text, offset, curr);
     if (next >= offset) {
       break;
     }
@@ -1494,14 +1503,14 @@ static inline int utf8_prev_grapheme(const char *text, int length, int offset) {
  * @param error_offset  [out] If non-NULL and validation fails, receives
  *                      the byte offset of the first invalid sequence.
  */
-static inline int utf8_valid(const char *text, int length, int *error_offset) {
+static inline int utf8_valid(const char *text, size_t length, size_t *error_offset) {
   if (!text) {
     if (error_offset) {
       *error_offset = 0;
     }
     return 0;
   }
-  int offset = 0;
+  size_t offset = 0;
   while (offset < length) {
     uint32_t codepoint;
     int bytes = utf8_decode(text + offset, length - offset, &codepoint);
@@ -1525,12 +1534,12 @@ static inline int utf8_valid(const char *text, int length, int *error_offset) {
  * Counts the number of Unicode codepoints in the given UTF-8 string.
  * Note: This counts codepoints, not grapheme clusters.
  */
-static inline int utf8_cpcount(const char *text, int length) {
+static inline size_t utf8_cpcount(const char *text, size_t length) {
   if (!text) {
     return 0;
   }
-  int count = 0;
-  int offset = 0;
+  size_t count = 0;
+  size_t offset = 0;
   while (offset < length) {
     offset = utf8_next(text, length, offset);
     count++;
@@ -1543,17 +1552,17 @@ static inline int utf8_cpcount(const char *text, int length) {
  * Returns the byte offset where truncation occurred, preserving
  * codepoint boundaries.
  */
-static inline int utf8_truncate(const char *text, int length, int max_cols) {
+static inline size_t utf8_truncate(const char *text, size_t length, size_t max_cols) {
   if (!text) {
     return 0;
   }
-  int width = 0;
-  int offset = 0;
+  size_t width = 0;
+  size_t offset = 0;
 
   while (offset < length) {
     int char_width = utf8_charwidth(text, length, offset);
     if (char_width > 0) {
-      if (width + char_width > max_cols) {
+      if (width + (size_t)char_width > max_cols) {
         return offset;
       }
       width += char_width;
@@ -1626,10 +1635,10 @@ static inline int gstr_cmp_grapheme_icase(const char *a, size_t a_len, const cha
  */
 static inline int gstr_grapheme_in_set(const char *g, size_t g_len, const char *set,
                                 size_t set_len) {
-  int offset = 0;
-  while ((size_t)offset < set_len) {
-    int next = utf8_next_grapheme(set, (int)set_len, offset);
-    size_t grapheme_len = (size_t)(next - offset);
+  size_t offset = 0;
+  while (offset < set_len) {
+    size_t next = utf8_next_grapheme(set, set_len, offset);
+    size_t grapheme_len = (next - offset);
 
     if (grapheme_len == g_len && memcmp(g, set + offset, g_len) == 0) {
       return 1;
@@ -1666,7 +1675,7 @@ static inline int gstr_is_whitespace(const char *g, size_t g_len) {
     return 1;
   /* Decode the first codepoint */
   uint32_t cp;
-  int bytes = utf8_decode(g, (int)g_len, &cp);
+  int bytes = utf8_decode(g, g_len, &cp);
   /* Only single-codepoint graphemes qualify as whitespace */
   if ((size_t)bytes != g_len)
     return 0;
@@ -1712,10 +1721,10 @@ static inline size_t gstrlen(const char *s, size_t byte_len) {
     return 0;
 
   size_t count = 0;
-  int offset = 0;
+  size_t offset = 0;
 
-  while ((size_t)offset < byte_len) {
-    offset = utf8_next_grapheme(s, (int)byte_len, offset);
+  while (offset < byte_len) {
+    offset = utf8_next_grapheme(s, byte_len, offset);
     count++;
   }
 
@@ -1732,10 +1741,10 @@ static inline size_t gstrnlen(const char *s, size_t byte_len,
     return 0;
 
   size_t count = 0;
-  int offset = 0;
+  size_t offset = 0;
 
-  while ((size_t)offset < byte_len && count < max_graphemes) {
-    offset = utf8_next_grapheme(s, (int)byte_len, offset);
+  while (offset < byte_len && count < max_graphemes) {
+    offset = utf8_next_grapheme(s, byte_len, offset);
     count++;
   }
 
@@ -1744,7 +1753,7 @@ static inline size_t gstrnlen(const char *s, size_t byte_len,
 
 /* Forward declaration for gstr_grapheme_width (defined later). */
 static inline size_t gstr_grapheme_width(const char *s, size_t byte_len,
-                                         int offset, int next);
+                                         size_t offset, size_t next);
 
 /*
  * Calculates the display width in terminal columns for a grapheme string.
@@ -1756,10 +1765,10 @@ static inline size_t gstrwidth(const char *s, size_t byte_len) {
     return 0;
 
   size_t width = 0;
-  int offset = 0;
+  size_t offset = 0;
 
-  while ((size_t)offset < byte_len) {
-    int next = utf8_next_grapheme(s, (int)byte_len, offset);
+  while (offset < byte_len) {
+    size_t next = utf8_next_grapheme(s, byte_len, offset);
     width += gstr_grapheme_width(s, byte_len, offset, next);
     offset = next;
   }
@@ -1779,9 +1788,9 @@ static inline size_t gstrwidth(const char *s, size_t byte_len) {
  *   }
  *
  *   // GOOD: O(n)
- *   int off = 0;
+ *   size_t off = 0;
  *   for (size_t g = 0; g < count; g++) {
- *       int next = utf8_next_grapheme(s, len, off);  // incremental
+ *       size_t next = utf8_next_grapheme(s, len, off);  // incremental
  *       // process s[off..next)
  *       off = next;
  *   }
@@ -1797,15 +1806,15 @@ static inline size_t gstroff(const char *s, size_t byte_len,
   if (!s)
     return 0;
 
-  int offset = 0;
+  size_t offset = 0;
   size_t count = 0;
 
-  while ((size_t)offset < byte_len && count < grapheme_n) {
-    offset = utf8_next_grapheme(s, (int)byte_len, offset);
+  while (offset < byte_len && count < grapheme_n) {
+    offset = utf8_next_grapheme(s, byte_len, offset);
     count++;
   }
 
-  return (size_t)offset;
+  return offset;
 }
 
 /*
@@ -1820,21 +1829,21 @@ static inline const char *gstrat(const char *s, size_t byte_len,
   if (!s || byte_len == 0)
     return NULL;
 
-  int offset = 0;
+  size_t offset = 0;
   size_t count = 0;
 
-  while ((size_t)offset < byte_len && count < grapheme_n) {
-    offset = utf8_next_grapheme(s, (int)byte_len, offset);
+  while (offset < byte_len && count < grapheme_n) {
+    offset = utf8_next_grapheme(s, byte_len, offset);
     count++;
   }
 
-  if ((size_t)offset >= byte_len)
+  if (offset >= byte_len)
     return NULL;
 
-  int next = utf8_next_grapheme(s, (int)byte_len, offset);
+  size_t next = utf8_next_grapheme(s, byte_len, offset);
 
   if (out_len)
-    *out_len = (size_t)(next - offset);
+    *out_len = (next - offset);
 
   return s + offset;
 }
@@ -1853,15 +1862,15 @@ static inline int gstrcmp(const char *a, size_t a_len, const char *b,
   if (!b)
     return 1;
 
-  int a_off = 0;
-  int b_off = 0;
+  size_t a_off = 0;
+  size_t b_off = 0;
 
-  while ((size_t)a_off < a_len && (size_t)b_off < b_len) {
-    int a_next = utf8_next_grapheme(a, (int)a_len, a_off);
-    int b_next = utf8_next_grapheme(b, (int)b_len, b_off);
+  while (a_off < a_len && b_off < b_len) {
+    size_t a_next = utf8_next_grapheme(a, a_len, a_off);
+    size_t b_next = utf8_next_grapheme(b, b_len, b_off);
 
-    size_t a_glen = (size_t)(a_next - a_off);
-    size_t b_glen = (size_t)(b_next - b_off);
+    size_t a_glen = (a_next - a_off);
+    size_t b_glen = (b_next - b_off);
 
     int cmp = gstr_cmp_grapheme(a + a_off, a_glen, b + b_off, b_glen);
     if (cmp != 0)
@@ -1871,9 +1880,9 @@ static inline int gstrcmp(const char *a, size_t a_len, const char *b,
     b_off = b_next;
   }
 
-  if ((size_t)a_off >= a_len && (size_t)b_off >= b_len)
+  if (a_off >= a_len && b_off >= b_len)
     return 0;
-  if ((size_t)a_off >= a_len)
+  if (a_off >= a_len)
     return -1;
   return 1;
 }
@@ -1893,16 +1902,16 @@ static inline int gstrncmp(const char *a, size_t a_len, const char *b,
   if (!b)
     return 1;
 
-  int a_off = 0;
-  int b_off = 0;
+  size_t a_off = 0;
+  size_t b_off = 0;
   size_t count = 0;
 
-  while ((size_t)a_off < a_len && (size_t)b_off < b_len && count < n) {
-    int a_next = utf8_next_grapheme(a, (int)a_len, a_off);
-    int b_next = utf8_next_grapheme(b, (int)b_len, b_off);
+  while (a_off < a_len && b_off < b_len && count < n) {
+    size_t a_next = utf8_next_grapheme(a, a_len, a_off);
+    size_t b_next = utf8_next_grapheme(b, b_len, b_off);
 
-    size_t a_glen = (size_t)(a_next - a_off);
-    size_t b_glen = (size_t)(b_next - b_off);
+    size_t a_glen = (a_next - a_off);
+    size_t b_glen = (b_next - b_off);
 
     int cmp = gstr_cmp_grapheme(a + a_off, a_glen, b + b_off, b_glen);
     if (cmp != 0)
@@ -1916,9 +1925,9 @@ static inline int gstrncmp(const char *a, size_t a_len, const char *b,
   if (count == n)
     return 0;
 
-  if ((size_t)a_off >= a_len && (size_t)b_off >= b_len)
+  if (a_off >= a_len && b_off >= b_len)
     return 0;
-  if ((size_t)a_off >= a_len)
+  if (a_off >= a_len)
     return -1;
   return 1;
 }
@@ -1936,15 +1945,15 @@ static inline int gstrcasecmp(const char *a, size_t a_len, const char *b,
   if (!b)
     return 1;
 
-  int a_off = 0;
-  int b_off = 0;
+  size_t a_off = 0;
+  size_t b_off = 0;
 
-  while ((size_t)a_off < a_len && (size_t)b_off < b_len) {
-    int a_next = utf8_next_grapheme(a, (int)a_len, a_off);
-    int b_next = utf8_next_grapheme(b, (int)b_len, b_off);
+  while (a_off < a_len && b_off < b_len) {
+    size_t a_next = utf8_next_grapheme(a, a_len, a_off);
+    size_t b_next = utf8_next_grapheme(b, b_len, b_off);
 
-    size_t a_glen = (size_t)(a_next - a_off);
-    size_t b_glen = (size_t)(b_next - b_off);
+    size_t a_glen = (a_next - a_off);
+    size_t b_glen = (b_next - b_off);
 
     int cmp = gstr_cmp_grapheme_icase(a + a_off, a_glen, b + b_off, b_glen);
     if (cmp != 0)
@@ -1954,9 +1963,9 @@ static inline int gstrcasecmp(const char *a, size_t a_len, const char *b,
     b_off = b_next;
   }
 
-  if ((size_t)a_off >= a_len && (size_t)b_off >= b_len)
+  if (a_off >= a_len && b_off >= b_len)
     return 0;
-  if ((size_t)a_off >= a_len)
+  if (a_off >= a_len)
     return -1;
   return 1;
 }
@@ -1976,16 +1985,16 @@ static inline int gstrncasecmp(const char *a, size_t a_len, const char *b,
   if (!b)
     return 1;
 
-  int a_off = 0;
-  int b_off = 0;
+  size_t a_off = 0;
+  size_t b_off = 0;
   size_t count = 0;
 
-  while ((size_t)a_off < a_len && (size_t)b_off < b_len && count < n) {
-    int a_next = utf8_next_grapheme(a, (int)a_len, a_off);
-    int b_next = utf8_next_grapheme(b, (int)b_len, b_off);
+  while (a_off < a_len && b_off < b_len && count < n) {
+    size_t a_next = utf8_next_grapheme(a, a_len, a_off);
+    size_t b_next = utf8_next_grapheme(b, b_len, b_off);
 
-    size_t a_glen = (size_t)(a_next - a_off);
-    size_t b_glen = (size_t)(b_next - b_off);
+    size_t a_glen = (a_next - a_off);
+    size_t b_glen = (b_next - b_off);
 
     int cmp = gstr_cmp_grapheme_icase(a + a_off, a_glen, b + b_off, b_glen);
     if (cmp != 0)
@@ -1999,9 +2008,9 @@ static inline int gstrncasecmp(const char *a, size_t a_len, const char *b,
   if (count == n)
     return 0;
 
-  if ((size_t)a_off >= a_len && (size_t)b_off >= b_len)
+  if (a_off >= a_len && b_off >= b_len)
     return 0;
-  if ((size_t)a_off >= a_len)
+  if (a_off >= a_len)
     return -1;
   return 1;
 }
@@ -2021,15 +2030,15 @@ static inline int gstrstartswith(const char *s, size_t s_len,
     return 0;
 
   /* Compare grapheme by grapheme */
-  int s_off = 0;
-  int p_off = 0;
+  size_t s_off = 0;
+  size_t p_off = 0;
 
-  while ((size_t)p_off < prefix_len) {
-    if ((size_t)s_off >= s_len)
+  while (p_off < prefix_len) {
+    if (s_off >= s_len)
       return 0;
 
-    int s_next = utf8_next_grapheme(s, (int)s_len, s_off);
-    int p_next = utf8_next_grapheme(prefix, (int)prefix_len, p_off);
+    int s_next = utf8_next_grapheme(s, s_len, s_off);
+    int p_next = utf8_next_grapheme(prefix, prefix_len, p_off);
 
     size_t s_glen = (size_t)(s_next - s_off);
     size_t p_glen = (size_t)(p_next - p_off);
@@ -2069,15 +2078,15 @@ static inline int gstrendswith(const char *s, size_t s_len, const char *suffix,
   size_t s_offset = gstroff(s, s_len, start_grapheme);
 
   /* Compare remaining graphemes */
-  int s_off = (int)s_offset;
-  int suf_off = 0;
+  size_t s_off = (int)s_offset;
+  size_t suf_off = 0;
 
-  while ((size_t)suf_off < suffix_len) {
-    if ((size_t)s_off >= s_len)
+  while (suf_off < suffix_len) {
+    if (s_off >= s_len)
       return 0;
 
-    int s_next = utf8_next_grapheme(s, (int)s_len, s_off);
-    int suf_next = utf8_next_grapheme(suffix, (int)suffix_len, suf_off);
+    int s_next = utf8_next_grapheme(s, s_len, s_off);
+    int suf_next = utf8_next_grapheme(suffix, suffix_len, suf_off);
 
     size_t s_glen = (size_t)(s_next - s_off);
     size_t suf_glen = (size_t)(suf_next - suf_off);
@@ -2102,11 +2111,11 @@ static inline const char *gstrchr(const char *s, size_t len,
   if (!s || len == 0 || !grapheme || g_len == 0)
     return NULL;
 
-  int offset = 0;
+  size_t offset = 0;
 
-  while ((size_t)offset < len) {
-    int next = utf8_next_grapheme(s, (int)len, offset);
-    size_t grapheme_len = (size_t)(next - offset);
+  while (offset < len) {
+    size_t next = utf8_next_grapheme(s, len, offset);
+    size_t grapheme_len = (next - offset);
 
     if (grapheme_len == g_len && memcmp(s + offset, grapheme, g_len) == 0) {
       return s + offset;
@@ -2128,11 +2137,11 @@ static inline const char *gstrrchr(const char *s, size_t len,
     return NULL;
 
   const char *last_match = NULL;
-  int offset = 0;
+  size_t offset = 0;
 
-  while ((size_t)offset < len) {
-    int next = utf8_next_grapheme(s, (int)len, offset);
-    size_t grapheme_len = (size_t)(next - offset);
+  while (offset < len) {
+    size_t next = utf8_next_grapheme(s, len, offset);
+    size_t grapheme_len = (next - offset);
 
     if (grapheme_len == g_len && memcmp(s + offset, grapheme, g_len) == 0) {
       last_match = s + offset;
@@ -2161,25 +2170,25 @@ static inline const char *gstrstr(const char *haystack, size_t h_len,
   if (needle_graphemes == 0)
     return haystack;
 
-  int h_off = 0;
+  size_t h_off = 0;
 
-  while ((size_t)h_off < h_len) {
-    int h_pos = h_off;
-    int n_pos = 0;
+  while (h_off < h_len) {
+    size_t h_pos = h_off;
+    size_t n_pos = 0;
     int match = 1;
     size_t matched_graphemes = 0;
 
     while (matched_graphemes < needle_graphemes) {
-      if ((size_t)h_pos >= h_len) {
+      if (h_pos >= h_len) {
         match = 0;
         break;
       }
 
-      int h_next = utf8_next_grapheme(haystack, (int)h_len, h_pos);
-      int n_next = utf8_next_grapheme(needle, (int)n_len, n_pos);
+      int h_next = utf8_next_grapheme(haystack, h_len, h_pos);
+      int n_next = utf8_next_grapheme(needle, n_len, n_pos);
 
-      size_t h_glen = (size_t)(h_next - h_pos);
-      size_t n_glen = (size_t)(n_next - n_pos);
+      size_t h_glen = (h_next - h_pos);
+      size_t n_glen = (n_next - n_pos);
 
       if (h_glen != n_glen ||
           memcmp(haystack + h_pos, needle + n_pos, h_glen) != 0) {
@@ -2195,7 +2204,7 @@ static inline const char *gstrstr(const char *haystack, size_t h_len,
     if (match)
       return haystack + h_off;
 
-    h_off = utf8_next_grapheme(haystack, (int)h_len, h_off);
+    h_off = utf8_next_grapheme(haystack, h_len, h_off);
   }
 
   return NULL;
@@ -2219,25 +2228,25 @@ static inline const char *gstrrstr(const char *haystack, size_t h_len,
   if (needle_graphemes == 0)
     return haystack;
 
-  int h_off = 0;
+  size_t h_off = 0;
 
-  while ((size_t)h_off < h_len) {
-    int h_pos = h_off;
-    int n_pos = 0;
+  while (h_off < h_len) {
+    size_t h_pos = h_off;
+    size_t n_pos = 0;
     int match = 1;
     size_t matched_graphemes = 0;
 
     while (matched_graphemes < needle_graphemes) {
-      if ((size_t)h_pos >= h_len) {
+      if (h_pos >= h_len) {
         match = 0;
         break;
       }
 
-      int h_next = utf8_next_grapheme(haystack, (int)h_len, h_pos);
-      int n_next = utf8_next_grapheme(needle, (int)n_len, n_pos);
+      int h_next = utf8_next_grapheme(haystack, h_len, h_pos);
+      int n_next = utf8_next_grapheme(needle, n_len, n_pos);
 
-      size_t h_glen = (size_t)(h_next - h_pos);
-      size_t n_glen = (size_t)(n_next - n_pos);
+      size_t h_glen = (h_next - h_pos);
+      size_t n_glen = (n_next - n_pos);
 
       if (h_glen != n_glen ||
           memcmp(haystack + h_pos, needle + n_pos, h_glen) != 0) {
@@ -2253,7 +2262,7 @@ static inline const char *gstrrstr(const char *haystack, size_t h_len,
     if (match)
       last_match = haystack + h_off;
 
-    h_off = utf8_next_grapheme(haystack, (int)h_len, h_off);
+    h_off = utf8_next_grapheme(haystack, h_len, h_off);
   }
 
   return last_match;
@@ -2276,25 +2285,25 @@ static inline const char *gstrcasestr(const char *haystack, size_t h_len,
   if (needle_graphemes == 0)
     return haystack;
 
-  int h_off = 0;
+  size_t h_off = 0;
 
-  while ((size_t)h_off < h_len) {
-    int h_pos = h_off;
-    int n_pos = 0;
+  while (h_off < h_len) {
+    size_t h_pos = h_off;
+    size_t n_pos = 0;
     int match = 1;
     size_t matched_graphemes = 0;
 
     while (matched_graphemes < needle_graphemes) {
-      if ((size_t)h_pos >= h_len) {
+      if (h_pos >= h_len) {
         match = 0;
         break;
       }
 
-      int h_next = utf8_next_grapheme(haystack, (int)h_len, h_pos);
-      int n_next = utf8_next_grapheme(needle, (int)n_len, n_pos);
+      int h_next = utf8_next_grapheme(haystack, h_len, h_pos);
+      int n_next = utf8_next_grapheme(needle, n_len, n_pos);
 
-      size_t h_glen = (size_t)(h_next - h_pos);
-      size_t n_glen = (size_t)(n_next - n_pos);
+      size_t h_glen = (h_next - h_pos);
+      size_t n_glen = (n_next - n_pos);
 
       if (gstr_cmp_grapheme_icase(haystack + h_pos, h_glen, needle + n_pos,
                                   n_glen) != 0) {
@@ -2310,7 +2319,7 @@ static inline const char *gstrcasestr(const char *haystack, size_t h_len,
     if (match)
       return haystack + h_off;
 
-    h_off = utf8_next_grapheme(haystack, (int)h_len, h_off);
+    h_off = utf8_next_grapheme(haystack, h_len, h_off);
   }
 
   return NULL;
@@ -2356,11 +2365,11 @@ static inline size_t gstrspn(const char *s, size_t len, const char *accept,
     return 0;
 
   size_t count = 0;
-  int offset = 0;
+  size_t offset = 0;
 
-  while ((size_t)offset < len) {
-    int next = utf8_next_grapheme(s, (int)len, offset);
-    size_t grapheme_len = (size_t)(next - offset);
+  while (offset < len) {
+    size_t next = utf8_next_grapheme(s, len, offset);
+    size_t grapheme_len = (next - offset);
 
     if (!gstr_grapheme_in_set(s + offset, grapheme_len, accept, a_len)) {
       break;
@@ -2384,11 +2393,11 @@ static inline size_t gstrcspn(const char *s, size_t len, const char *reject,
     return gstrlen(s, len);
 
   size_t count = 0;
-  int offset = 0;
+  size_t offset = 0;
 
-  while ((size_t)offset < len) {
-    int next = utf8_next_grapheme(s, (int)len, offset);
-    size_t grapheme_len = (size_t)(next - offset);
+  while (offset < len) {
+    size_t next = utf8_next_grapheme(s, len, offset);
+    size_t grapheme_len = (next - offset);
 
     if (gstr_grapheme_in_set(s + offset, grapheme_len, reject, r_len)) {
       break;
@@ -2410,11 +2419,11 @@ static inline const char *gstrpbrk(const char *s, size_t len,
   if (!s || len == 0 || !accept || a_len == 0)
     return NULL;
 
-  int offset = 0;
+  size_t offset = 0;
 
-  while ((size_t)offset < len) {
-    int next = utf8_next_grapheme(s, (int)len, offset);
-    size_t grapheme_len = (size_t)(next - offset);
+  while (offset < len) {
+    size_t next = utf8_next_grapheme(s, len, offset);
+    size_t grapheme_len = (next - offset);
 
     if (gstr_grapheme_in_set(s + offset, grapheme_len, accept, a_len)) {
       return s + offset;
@@ -2446,22 +2455,22 @@ static inline size_t gstrsub(char *dst, size_t dst_size, const char *src,
   if (start_offset >= src_len)
     return 0;
 
-  int offset = (int)start_offset;
+  size_t offset = start_offset;
   size_t graphemes_copied = 0;
 
-  while ((size_t)offset < src_len && graphemes_copied < count) {
-    offset = utf8_next_grapheme(src, (int)src_len, offset);
+  while (offset < src_len && graphemes_copied < count) {
+    offset = utf8_next_grapheme(src, src_len, offset);
     graphemes_copied++;
   }
 
-  size_t bytes_to_copy = (size_t)offset - start_offset;
+  size_t bytes_to_copy = offset - start_offset;
 
   if (bytes_to_copy >= dst_size) {
     int fit_offset = (int)start_offset;
     int last_complete = (int)start_offset;
 
     while ((size_t)fit_offset < start_offset + bytes_to_copy) {
-      int next = utf8_next_grapheme(src, (int)src_len, fit_offset);
+      size_t next = utf8_next_grapheme(src, src_len, fit_offset);
       if ((size_t)(next - (int)start_offset) < dst_size) {
         last_complete = next;
       } else {
@@ -2497,12 +2506,12 @@ static inline size_t gstrcpy(char *dst, size_t dst_size, const char *src,
   if (bytes_to_copy >= dst_size)
     bytes_to_copy = dst_size - 1;
 
-  int offset = 0;
-  int last_complete = 0;
+  size_t offset = 0;
+  size_t last_complete = 0;
 
-  while ((size_t)offset < bytes_to_copy) {
-    int next = utf8_next_grapheme(src, (int)src_len, offset);
-    if ((size_t)next <= bytes_to_copy) {
+  while (offset < bytes_to_copy) {
+    size_t next = utf8_next_grapheme(src, src_len, offset);
+    if (next <= bytes_to_copy) {
       last_complete = next;
     } else {
       break;
@@ -2530,24 +2539,24 @@ static inline size_t gstrncpy(char *dst, size_t dst_size, const char *src,
   if (!src || src_len == 0 || n == 0)
     return 0;
 
-  int offset = 0;
+  size_t offset = 0;
   size_t count = 0;
 
-  while ((size_t)offset < src_len && count < n) {
-    offset = utf8_next_grapheme(src, (int)src_len, offset);
+  while (offset < src_len && count < n) {
+    offset = utf8_next_grapheme(src, src_len, offset);
     count++;
   }
 
-  size_t bytes_to_copy = (size_t)offset;
+  size_t bytes_to_copy = offset;
   if (bytes_to_copy >= dst_size)
     bytes_to_copy = dst_size - 1;
 
-  int fit_offset = 0;
-  int last_complete = 0;
+  size_t fit_offset = 0;
+  size_t last_complete = 0;
 
   while ((size_t)fit_offset < bytes_to_copy) {
-    int next = utf8_next_grapheme(src, (int)src_len, fit_offset);
-    if ((size_t)next <= bytes_to_copy) {
+    size_t next = utf8_next_grapheme(src, src_len, fit_offset);
+    if (next <= bytes_to_copy) {
       last_complete = next;
     } else {
       break;
@@ -2583,12 +2592,12 @@ static inline size_t gstrcat(char *dst, size_t dst_size, const char *src,
   if (bytes_to_copy > remaining)
     bytes_to_copy = remaining;
 
-  int offset = 0;
-  int last_complete = 0;
+  size_t offset = 0;
+  size_t last_complete = 0;
 
-  while ((size_t)offset < bytes_to_copy) {
-    int next = utf8_next_grapheme(src, (int)src_len, offset);
-    if ((size_t)next <= bytes_to_copy) {
+  while (offset < bytes_to_copy) {
+    size_t next = utf8_next_grapheme(src, src_len, offset);
+    if (next <= bytes_to_copy) {
       last_complete = next;
     } else {
       break;
@@ -2618,25 +2627,25 @@ static inline size_t gstrncat(char *dst, size_t dst_size, const char *src,
   if (!src || src_len == 0 || n == 0)
     return dst_len;
 
-  int offset = 0;
+  size_t offset = 0;
   size_t count = 0;
 
-  while ((size_t)offset < src_len && count < n) {
-    offset = utf8_next_grapheme(src, (int)src_len, offset);
+  while (offset < src_len && count < n) {
+    offset = utf8_next_grapheme(src, src_len, offset);
     count++;
   }
 
-  size_t bytes_to_append = (size_t)offset;
+  size_t bytes_to_append = offset;
   size_t remaining = dst_size - dst_len - 1;
   if (bytes_to_append > remaining)
     bytes_to_append = remaining;
 
-  int fit_offset = 0;
-  int last_complete = 0;
+  size_t fit_offset = 0;
+  size_t last_complete = 0;
 
   while ((size_t)fit_offset < bytes_to_append) {
-    int next = utf8_next_grapheme(src, (int)src_len, fit_offset);
-    if ((size_t)next <= bytes_to_append) {
+    size_t next = utf8_next_grapheme(src, src_len, fit_offset);
+    if (next <= bytes_to_append) {
       last_complete = next;
     } else {
       break;
@@ -2679,15 +2688,15 @@ static inline char *gstrndup(const char *s, size_t len, size_t n) {
   if (n == 0)
     return gstrdup("", 0);
 
-  int offset = 0;
+  size_t offset = 0;
   size_t count = 0;
 
-  while ((size_t)offset < len && count < n) {
-    offset = utf8_next_grapheme(s, (int)len, offset);
+  while (offset < len && count < n) {
+    offset = utf8_next_grapheme(s, len, offset);
     count++;
   }
 
-  return gstrdup(s, (size_t)offset);
+  return gstrdup(s, offset);
 }
 
 /* ============================================================================
@@ -2717,17 +2726,17 @@ static inline const char *gstrsep(const char **stringp, size_t *lenp,
     return start;
   }
 
-  int offset = 0;
+  size_t offset = 0;
 
-  while ((size_t)offset < len) {
-    int next = utf8_next_grapheme(start, (int)len, offset);
-    size_t grapheme_len = (size_t)(next - offset);
+  while (offset < len) {
+    size_t next = utf8_next_grapheme(start, len, offset);
+    size_t grapheme_len = (next - offset);
 
     if (gstr_grapheme_in_set(start + offset, grapheme_len, delim, d_len)) {
       if (tok_len)
-        *tok_len = (size_t)offset;
+        *tok_len = offset;
       *stringp = start + next;
-      *lenp = len - (size_t)next;
+      *lenp = len - next;
       return start;
     }
     offset = next;
@@ -2755,11 +2764,11 @@ static inline size_t gstrltrim(char *dst, size_t dst_size, const char *src,
   if (!src || src_len == 0)
     return 0;
 
-  int offset = 0;
+  size_t offset = 0;
 
-  while ((size_t)offset < src_len) {
-    int next = utf8_next_grapheme(src, (int)src_len, offset);
-    size_t grapheme_len = (size_t)(next - offset);
+  while (offset < src_len) {
+    size_t next = utf8_next_grapheme(src, src_len, offset);
+    size_t grapheme_len = (next - offset);
 
     if (!gstr_is_whitespace(src + offset, grapheme_len)) {
       break;
@@ -2767,7 +2776,7 @@ static inline size_t gstrltrim(char *dst, size_t dst_size, const char *src,
     offset = next;
   }
 
-  size_t remaining = src_len - (size_t)offset;
+  size_t remaining = src_len - offset;
   return gstrcpy(dst, dst_size, src + offset, remaining);
 }
 
@@ -2785,12 +2794,12 @@ static inline size_t gstrrtrim(char *dst, size_t dst_size, const char *src,
   if (!src || src_len == 0)
     return 0;
 
-  int last_non_ws_end = 0;
-  int offset = 0;
+  size_t last_non_ws_end = 0;
+  size_t offset = 0;
 
-  while ((size_t)offset < src_len) {
-    int next = utf8_next_grapheme(src, (int)src_len, offset);
-    size_t grapheme_len = (size_t)(next - offset);
+  while (offset < src_len) {
+    size_t next = utf8_next_grapheme(src, src_len, offset);
+    size_t grapheme_len = (next - offset);
 
     if (!gstr_is_whitespace(src + offset, grapheme_len)) {
       last_non_ws_end = next;
@@ -2815,11 +2824,11 @@ static inline size_t gstrtrim(char *dst, size_t dst_size, const char *src,
   if (!src || src_len == 0)
     return 0;
 
-  int start_offset = 0;
+  size_t start_offset = 0;
 
-  while ((size_t)start_offset < src_len) {
-    int next = utf8_next_grapheme(src, (int)src_len, start_offset);
-    size_t grapheme_len = (size_t)(next - start_offset);
+  while (start_offset < src_len) {
+    size_t next = utf8_next_grapheme(src, src_len, start_offset);
+    size_t grapheme_len = (next - start_offset);
 
     if (!gstr_is_whitespace(src + start_offset, grapheme_len)) {
       break;
@@ -2827,20 +2836,20 @@ static inline size_t gstrtrim(char *dst, size_t dst_size, const char *src,
     start_offset = next;
   }
 
-  if ((size_t)start_offset >= src_len)
+  if (start_offset >= src_len)
     return 0;
 
-  int last_non_ws_end = start_offset;
-  int offset = start_offset;
+  size_t last_non_ws_end = start_offset;
+  size_t trim_off = start_offset;
 
-  while ((size_t)offset < src_len) {
-    int next = utf8_next_grapheme(src, (int)src_len, offset);
-    size_t grapheme_len = (size_t)(next - offset);
+  while (trim_off < src_len) {
+    size_t next = utf8_next_grapheme(src, src_len, trim_off);
+    size_t grapheme_len = (next - trim_off);
 
-    if (!gstr_is_whitespace(src + offset, grapheme_len)) {
+    if (!gstr_is_whitespace(src + trim_off, grapheme_len)) {
       last_non_ws_end = next;
     }
-    offset = next;
+    trim_off = next;
   }
 
   size_t trimmed_len = (size_t)last_non_ws_end - (size_t)start_offset;
@@ -2865,10 +2874,10 @@ static inline size_t gstrrev(char *dst, size_t dst_size, const char *src,
   /* Pass 1 (forward): measure how many complete graphemes fit in dst */
   size_t total_bytes = 0;
   size_t n_graphemes = 0;
-  int offset = 0;
-  while ((size_t)offset < src_len) {
-    int next = utf8_next_grapheme(src, (int)src_len, offset);
-    size_t glen = (size_t)(next - offset);
+  size_t offset = 0;
+  while (offset < src_len) {
+    size_t next = utf8_next_grapheme(src, src_len, offset);
+    size_t glen = (next - offset);
     if (total_bytes + glen >= dst_size)
       break;
     total_bytes += glen;
@@ -2882,10 +2891,10 @@ static inline size_t gstrrev(char *dst, size_t dst_size, const char *src,
   /* Pass 2 (backward): copy graphemes in reverse order into dst.
    * Walk backward from the end of the measured region (total_bytes). */
   size_t written = 0;
-  int current_end = (int)total_bytes;
+  size_t current_end = (int)total_bytes;
   for (size_t i = 0; i < n_graphemes; i++) {
-    int start = utf8_prev_grapheme(src, (int)src_len, current_end);
-    size_t glen = (size_t)(current_end - start);
+    int start = utf8_prev_grapheme(src, src_len, current_end);
+    size_t glen = (current_end - start);
     memcpy(dst + written, src + start, glen);
     written += glen;
     current_end = start;
@@ -2925,12 +2934,12 @@ static inline size_t gstrreplace(char *dst, size_t dst_size, const char *src,
       size_t to_copy = remaining;
       if (written + to_copy >= dst_size) {
         int fit_offset = 0;
-        int last_complete = 0;
+        size_t last_complete = 0;
         size_t max_bytes = dst_size - written - 1;
 
         while ((size_t)fit_offset < to_copy && (size_t)fit_offset < max_bytes) {
-          int next = utf8_next_grapheme(pos, (int)remaining, fit_offset);
-          if ((size_t)next <= max_bytes) {
+          size_t next = utf8_next_grapheme(pos, (int)remaining, fit_offset);
+          if (next <= max_bytes) {
             last_complete = next;
           } else {
             break;
@@ -2949,13 +2958,13 @@ static inline size_t gstrreplace(char *dst, size_t dst_size, const char *src,
     if (before_len > 0) {
       if (written + before_len >= dst_size) {
         int fit_offset = 0;
-        int last_complete = 0;
+        size_t last_complete = 0;
         size_t max_bytes = dst_size - written - 1;
 
         while ((size_t)fit_offset < before_len &&
                (size_t)fit_offset < max_bytes) {
-          int next = utf8_next_grapheme(pos, (int)before_len, fit_offset);
-          if ((size_t)next <= max_bytes) {
+          size_t next = utf8_next_grapheme(pos, (int)before_len, fit_offset);
+          if (next <= max_bytes) {
             last_complete = next;
           } else {
             break;
@@ -2974,12 +2983,12 @@ static inline size_t gstrreplace(char *dst, size_t dst_size, const char *src,
     if (new_str && new_len > 0) {
       if (written + new_len >= dst_size) {
         int fit_offset = 0;
-        int last_complete = 0;
+        size_t last_complete = 0;
         size_t max_bytes = dst_size - written - 1;
 
         while ((size_t)fit_offset < new_len && (size_t)fit_offset < max_bytes) {
-          int next = utf8_next_grapheme(new_str, (int)new_len, fit_offset);
-          if ((size_t)next <= max_bytes) {
+          size_t next = utf8_next_grapheme(new_str, new_len, fit_offset);
+          if (next <= max_bytes) {
             last_complete = next;
           } else {
             break;
@@ -3023,12 +3032,12 @@ static inline size_t gstrlower(char *dst, size_t dst_size, const char *src,
     bytes_to_copy = dst_size - 1;
 
   /* Find last complete grapheme that fits */
-  int offset = 0;
-  int last_complete = 0;
+  size_t offset = 0;
+  size_t last_complete = 0;
 
-  while ((size_t)offset < bytes_to_copy) {
-    int next = utf8_next_grapheme(src, (int)src_len, offset);
-    if ((size_t)next <= bytes_to_copy) {
+  while (offset < bytes_to_copy) {
+    size_t next = utf8_next_grapheme(src, src_len, offset);
+    if (next <= bytes_to_copy) {
       last_complete = next;
     } else {
       break;
@@ -3037,7 +3046,7 @@ static inline size_t gstrlower(char *dst, size_t dst_size, const char *src,
   }
 
   /* Copy and convert ASCII to lowercase */
-  for (int i = 0; i < last_complete; i++) {
+  for (size_t i = 0; i < last_complete; i++) {
     dst[i] = gstr_ascii_lower(src[i]);
   }
   dst[last_complete] = '\0';
@@ -3064,12 +3073,12 @@ static inline size_t gstrupper(char *dst, size_t dst_size, const char *src,
     bytes_to_copy = dst_size - 1;
 
   /* Find last complete grapheme that fits */
-  int offset = 0;
-  int last_complete = 0;
+  size_t offset = 0;
+  size_t last_complete = 0;
 
-  while ((size_t)offset < bytes_to_copy) {
-    int next = utf8_next_grapheme(src, (int)src_len, offset);
-    if ((size_t)next <= bytes_to_copy) {
+  while (offset < bytes_to_copy) {
+    size_t next = utf8_next_grapheme(src, src_len, offset);
+    if (next <= bytes_to_copy) {
       last_complete = next;
     } else {
       break;
@@ -3078,7 +3087,7 @@ static inline size_t gstrupper(char *dst, size_t dst_size, const char *src,
   }
 
   /* Copy and convert ASCII to uppercase */
-  for (int i = 0; i < last_complete; i++) {
+  for (size_t i = 0; i < last_complete; i++) {
     dst[i] = gstr_ascii_upper(src[i]);
   }
   dst[last_complete] = '\0';
@@ -3134,11 +3143,11 @@ static inline size_t gstrellipsis(char *dst, size_t dst_size, const char *src,
     size_t ell_to_copy = ellipsis_len;
     if (ell_to_copy > remaining) {
       /* Find last complete grapheme of ellipsis that fits */
-      int offset = 0;
-      int last_complete = 0;
-      while ((size_t)offset < remaining && (size_t)offset < ellipsis_len) {
-        int next = utf8_next_grapheme(ellipsis, (int)ellipsis_len, offset);
-        if ((size_t)next <= remaining) {
+      size_t offset = 0;
+      size_t last_complete = 0;
+      while (offset < remaining && offset < ellipsis_len) {
+        size_t next = utf8_next_grapheme(ellipsis, (int)ellipsis_len, offset);
+        if (next <= remaining) {
           last_complete = next;
         } else {
           break;
@@ -3230,11 +3239,11 @@ static inline size_t gstrlpad(char *dst, size_t dst_size, const char *src,
       size_t to_copy = src_len;
       if (to_copy > remaining) {
         /* Find last complete grapheme that fits */
-        int offset = 0;
-        int last_complete = 0;
-        while ((size_t)offset < to_copy && (size_t)offset < remaining) {
-          int next = utf8_next_grapheme(src, (int)src_len, offset);
-          if ((size_t)next <= remaining) {
+        size_t offset = 0;
+        size_t last_complete = 0;
+        while (offset < to_copy && offset < remaining) {
+          size_t next = utf8_next_grapheme(src, src_len, offset);
+          if (next <= remaining) {
             last_complete = next;
           } else {
             break;
@@ -3285,11 +3294,11 @@ static inline size_t gstrrpad(char *dst, size_t dst_size, const char *src,
     size_t to_copy = src_len;
     if (to_copy >= dst_size) {
       /* Find last complete grapheme that fits */
-      int offset = 0;
-      int last_complete = 0;
-      while ((size_t)offset < to_copy && (size_t)offset < dst_size - 1) {
-        int next = utf8_next_grapheme(src, (int)src_len, offset);
-        if ((size_t)next < dst_size) {
+      size_t offset = 0;
+      size_t last_complete = 0;
+      while (offset < to_copy && offset < dst_size - 1) {
+        size_t next = utf8_next_grapheme(src, src_len, offset);
+        if (next < dst_size) {
           last_complete = next;
         } else {
           break;
@@ -3364,11 +3373,11 @@ static inline size_t gstrpad(char *dst, size_t dst_size, const char *src,
     if (remaining > 0) {
       size_t to_copy = src_len;
       if (to_copy > remaining) {
-        int offset = 0;
-        int last_complete = 0;
-        while ((size_t)offset < to_copy && (size_t)offset < remaining) {
-          int next = utf8_next_grapheme(src, (int)src_len, offset);
-          if ((size_t)next <= remaining) {
+        size_t offset = 0;
+        size_t last_complete = 0;
+        while (offset < to_copy && offset < remaining) {
+          size_t next = utf8_next_grapheme(src, src_len, offset);
+          if (next <= remaining) {
             last_complete = next;
           } else {
             break;
@@ -3407,7 +3416,7 @@ static inline size_t gstrpad(char *dst, size_t dst_size, const char *src,
  * sequences (base + U+FE0F + U+20E3).
  */
 static inline size_t gstr_grapheme_width(const char *s, size_t byte_len,
-                                         int offset, int next) {
+                                         size_t offset, size_t next) {
   /* Scan grapheme for special sequences */
   int has_zwj = 0;
   int has_vs16 = 0;
@@ -3415,12 +3424,12 @@ static inline size_t gstr_grapheme_width(const char *s, size_t byte_len,
   int has_keycap = 0;
   int regional_count = 0;
   uint32_t base_cp = 0;
-  int cp_offset = offset;
+  size_t cp_offset = offset;
   int first = 1;
 
   while (cp_offset < next) {
     uint32_t cp;
-    int cp_bytes = utf8_decode(s + cp_offset, (int)byte_len - cp_offset, &cp);
+    int cp_bytes = utf8_decode(s + cp_offset, byte_len - cp_offset, &cp);
     if (cp_bytes <= 0)
       break;
     if (first) {
@@ -3468,10 +3477,10 @@ static inline size_t gstr_grapheme_width(const char *s, size_t byte_len,
   size_t width = 0;
   cp_offset = offset;
   while (cp_offset < next) {
-    int cw = utf8_charwidth(s, (int)byte_len, cp_offset);
+    int cw = utf8_charwidth(s, byte_len, cp_offset);
     if (cw > 0)
       width += (size_t)cw;
-    cp_offset = utf8_next(s, (int)byte_len, cp_offset);
+    cp_offset = utf8_next(s, byte_len, cp_offset);
   }
   return width;
 }
@@ -3491,11 +3500,11 @@ static inline size_t gstrwtrunc(char *dst, size_t dst_size, const char *src,
     return 0;
 
   size_t accumulated = 0;
-  int offset = 0;
+  size_t offset = 0;
   int last_valid = 0;
 
-  while ((size_t)offset < src_len) {
-    int next = utf8_next_grapheme(src, (int)src_len, offset);
+  while (offset < src_len) {
+    size_t next = utf8_next_grapheme(src, src_len, offset);
     size_t gwidth = gstr_grapheme_width(src, src_len, offset, next);
 
     if (accumulated + gwidth > max_cols) {
@@ -3512,11 +3521,11 @@ static inline size_t gstrwtrunc(char *dst, size_t dst_size, const char *src,
   if (to_copy >= dst_size) {
     to_copy = dst_size - 1;
     /* Find last complete grapheme that fits in buffer */
-    int off = 0;
-    int last = 0;
+    size_t off = 0;
+    size_t last = 0;
     while ((size_t)off < to_copy) {
-      int n = utf8_next_grapheme(src, (int)src_len, off);
-      if ((size_t)n <= to_copy) {
+      size_t n = utf8_next_grapheme(src, src_len, off);
+      if (n <= to_copy) {
         last = n;
       } else {
         break;
@@ -3588,11 +3597,11 @@ static inline size_t gstrwlpad(char *dst, size_t dst_size, const char *src,
       size_t to_copy = src_len;
       if (to_copy > remaining) {
         /* Find last complete grapheme that fits */
-        int offset = 0;
-        int last_complete = 0;
-        while ((size_t)offset < to_copy && (size_t)offset < remaining) {
-          int next = utf8_next_grapheme(src, (int)src_len, offset);
-          if ((size_t)next <= remaining) {
+        size_t offset = 0;
+        size_t last_complete = 0;
+        while (offset < to_copy && offset < remaining) {
+          size_t next = utf8_next_grapheme(src, src_len, offset);
+          if (next <= remaining) {
             last_complete = next;
           } else {
             break;
@@ -3643,11 +3652,11 @@ static inline size_t gstrwrpad(char *dst, size_t dst_size, const char *src,
     size_t to_copy = src_len;
     if (to_copy >= dst_size) {
       /* Find last complete grapheme that fits */
-      int offset = 0;
-      int last_complete = 0;
-      while ((size_t)offset < to_copy && (size_t)offset < dst_size - 1) {
-        int next = utf8_next_grapheme(src, (int)src_len, offset);
-        if ((size_t)next < dst_size) {
+      size_t offset = 0;
+      size_t last_complete = 0;
+      while (offset < to_copy && offset < dst_size - 1) {
+        size_t next = utf8_next_grapheme(src, src_len, offset);
+        if (next < dst_size) {
           last_complete = next;
         } else {
           break;
@@ -3740,11 +3749,11 @@ static inline size_t gstrwpad(char *dst, size_t dst_size, const char *src,
     if (remaining > 0) {
       size_t to_copy = src_len;
       if (to_copy > remaining) {
-        int offset = 0;
-        int last_complete = 0;
-        while ((size_t)offset < to_copy && (size_t)offset < remaining) {
-          int next = utf8_next_grapheme(src, (int)src_len, offset);
-          if ((size_t)next <= remaining) {
+        size_t offset = 0;
+        size_t last_complete = 0;
+        while (offset < to_copy && offset < remaining) {
+          size_t next = utf8_next_grapheme(src, src_len, offset);
+          if (next <= remaining) {
             last_complete = next;
           } else {
             break;
