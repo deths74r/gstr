@@ -1207,6 +1207,29 @@ TEST(gstrwidth_skin_tone) {
   ASSERT_EQ_SIZE(gstrwidth(WAVE_SKIN, WAVE_SKIN_LEN), 2);
 }
 
+TEST(gstrwidth_hangul_jamo) {
+  /* Conjoining jamo vowels/finals are zero-width (terminals render them at
+   * 0 columns); leading jamo render as a spacing glyph and stay wide. */
+  ASSERT_EQ_SIZE(gstrwidth("\xE1\x85\xA0", 3), 0);       /* lone U+1160 medial */
+  ASSERT_EQ_SIZE(gstrwidth("\xE1\x86\xA8", 3), 0);       /* lone U+11A8 final */
+  ASSERT_EQ_SIZE(gstrwidth("\xED\x9F\x8B", 3), 0);       /* lone U+D7CB ext-B final */
+  ASSERT_EQ_SIZE(gstrwidth("\xE1\x84\x92", 3), 2);       /* lone U+1112 leading */
+}
+
+TEST(gstrwidth_hangul_decomposed) {
+  /* Decomposed Hangul: conjoining L+V(+T) is one grapheme at the same
+   * 2 columns as the precomposed syllable. */
+  ASSERT_EQ_SIZE(gstrwidth("\xE1\x84\x92\xE1\x85\xA1\xE1\x86\xAB", 9), 2); /* 한 L+V+T */
+  ASSERT_EQ_SIZE(gstrwidth("\xE1\x84\x92\xE1\x85\xA1", 6), 2);            /* 하 L+V */
+}
+
+TEST(gstrwidth_degenerate_zwj) {
+  /* The ZWJ width-2 rule needs an emoji base: a lone ZWJ or text+ZWJ
+   * cluster is not an emoji sequence. */
+  ASSERT_EQ_SIZE(gstrwidth("\xE2\x80\x8D", 3), 0);       /* lone ZWJ */
+  ASSERT_EQ_SIZE(gstrwidth("a\xE2\x80\x8D", 4), 1);      /* a + ZWJ */
+}
+
 /* Emoji presentation width tests (VS16, keycap, VS15) */
 
 TEST(gstrwidth_keycap) {
@@ -1822,6 +1845,9 @@ int main(void) {
   RUN(gstrwidth_zwj_family);
   RUN(gstrwidth_flag);
   RUN(gstrwidth_skin_tone);
+  RUN(gstrwidth_hangul_jamo);
+  RUN(gstrwidth_hangul_decomposed);
+  RUN(gstrwidth_degenerate_zwj);
   RUN(gstrwidth_keycap);
   RUN(gstrwidth_vs16_emoji);
   RUN(gstrwidth_vs15_text);
