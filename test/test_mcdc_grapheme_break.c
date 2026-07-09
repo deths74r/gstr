@@ -22,12 +22,12 @@ TEST(gb3_cr_lf_no_break) {
 
 TEST(gb3_c1_false) {
   /* C1=F(not CR), C2=T(LF) -> falls to GB5, break */
-  ASSERT_EQ(is_grapheme_break(GCB_EXTEND, GCB_LF, 0, 0, 0x0A, 0), 1);
+  ASSERT_EQ(is_grapheme_break(GCB_OTHER, GCB_LF, 0, 0, 0x0A, 0), 1);
 }
 
 TEST(gb3_c2_false) {
   /* C1=T(CR), C2=F(not LF) -> falls to GB4, break */
-  ASSERT_EQ(is_grapheme_break(GCB_CR, GCB_EXTEND, 0, 0, 0x0300, 0), 1);
+  ASSERT_EQ(is_grapheme_break(GCB_CR, GCB_OTHER, 0, 0, 0x0041, 0), 1);
 }
 
 /* ============================================================================
@@ -47,9 +47,10 @@ TEST(gb4_lf_break) {
   ASSERT_EQ(is_grapheme_break(GCB_LF, GCB_EXTEND, 0, 0, 0x0300, 0), 1);
 }
 
-TEST(gb4_other_no_break) {
-  /* prev is not CONTROL/CR/LF -> falls through */
-  ASSERT_EQ(is_grapheme_break(GCB_EXTEND, GCB_EXTEND, 0, 0, 0x0300, 0), 0);
+TEST(gb4_other_falls_through) {
+  /* prev is not CONTROL/CR/LF, curr has no property -> GB999 break.
+   * Also the GB5/GB9/GB9a false paths and the GB999 pair-B case. */
+  ASSERT_EQ(is_grapheme_break(GCB_OTHER, GCB_OTHER, 0, 0, 0x0041, 0), 1);
 }
 
 /* ============================================================================
@@ -89,9 +90,14 @@ TEST(gb6_l_lvt_no_break) {
   ASSERT_EQ(is_grapheme_break(GCB_L, GCB_LVT, 0, 0, 0xAC01, 0), 0);
 }
 
+TEST(gb6_l_t_break) {
+  /* prev=L, curr=T -> GB6 false (spec 01 pair B), GB8 prev-false, break */
+  ASSERT_EQ(is_grapheme_break(GCB_L, GCB_T, 0, 0, 0x11A8, 0), 1);
+}
+
 TEST(gb6_l_other_break) {
-  /* prev=L, curr=EXTEND -> GB6 false, falls to GB9 */
-  ASSERT_EQ(is_grapheme_break(GCB_L, GCB_EXTEND, 0, 0, 0x0300, 0), 0); /* GB9 catches it */
+  /* prev=L, curr=OTHER -> GB6 false, falls all the way to GB999 */
+  ASSERT_EQ(is_grapheme_break(GCB_L, GCB_OTHER, 0, 0, 0x0041, 0), 1);
 }
 
 /* ============================================================================
@@ -106,6 +112,16 @@ TEST(gb7_v_t_no_break) {
   ASSERT_EQ(is_grapheme_break(GCB_V, GCB_T, 0, 0, 0x11A8, 0), 0);
 }
 
+TEST(gb7_other_v_break) {
+  /* prev side false: OTHER before V -> GB7 false, GB999 break */
+  ASSERT_EQ(is_grapheme_break(GCB_OTHER, GCB_V, 0, 0, 0x1160, 0), 1);
+}
+
+TEST(gb7_lv_other_break) {
+  /* curr side false: LV before OTHER (curr==V and curr==T both false) */
+  ASSERT_EQ(is_grapheme_break(GCB_LV, GCB_OTHER, 0, 0, 0x0041, 0), 1);
+}
+
 /* ============================================================================
  * GB8: (prev==LVT || prev==T) && curr==T -> no break
  * ============================================================================ */
@@ -116,6 +132,16 @@ TEST(gb8_lvt_t_no_break) {
 
 TEST(gb8_t_t_no_break) {
   ASSERT_EQ(is_grapheme_break(GCB_T, GCB_T, 0, 0, 0x11A8, 0), 0);
+}
+
+TEST(gb8_other_t_break) {
+  /* prev side false: OTHER before T -> GB8 false, GB999 break */
+  ASSERT_EQ(is_grapheme_break(GCB_OTHER, GCB_T, 0, 0, 0x11A8, 0), 1);
+}
+
+TEST(gb8_lvt_other_break) {
+  /* curr side false: LVT before OTHER (curr==T false) */
+  ASSERT_EQ(is_grapheme_break(GCB_LVT, GCB_OTHER, 0, 0, 0x0041, 0), 1);
 }
 
 /* ============================================================================
@@ -143,7 +169,9 @@ TEST(gb9a_spacing_mark_no_break) {
  * ============================================================================ */
 
 TEST(gb9b_prepend_no_break) {
-  ASSERT_EQ(is_grapheme_break(GCB_PREPEND, GCB_EXTEND, 0, 0, 0x0300, 0), 0);
+  /* curr=OTHER so no earlier rule (GB9) intercepts: this actually
+   * executes GB9b's return, not GB9's. */
+  ASSERT_EQ(is_grapheme_break(GCB_PREPEND, GCB_OTHER, 0, 0, 0x0041, 0), 0);
 }
 
 /* ============================================================================
@@ -151,18 +179,19 @@ TEST(gb9b_prepend_no_break) {
  * ============================================================================ */
 
 TEST(gb9c_incb_conjunct_no_break) {
-  /* incb_state=2 (saw consonant+linker), curr is a consonant */
-  ASSERT_EQ(is_grapheme_break(GCB_EXTEND, GCB_EXTEND, 0, 0, 0x0915, 2), 0);
+  /* incb_state=2 (saw consonant+linker), curr is a consonant (KA).
+   * curr props are OTHER so GB9c itself decides, not GB9. */
+  ASSERT_EQ(is_grapheme_break(GCB_OTHER, GCB_OTHER, 0, 0, 0x0915, 2), 0);
 }
 
 TEST(gb9c_incb_state_not_2) {
-  /* incb_state=1 (saw consonant but no linker) + consonant -> GB9 catches Extend */
-  ASSERT_EQ(is_grapheme_break(GCB_EXTEND, GCB_EXTEND, 0, 0, 0x0915, 1), 0);
+  /* incb_state=1 (saw consonant but no linker) + consonant -> GB999 break */
+  ASSERT_EQ(is_grapheme_break(GCB_OTHER, GCB_OTHER, 0, 0, 0x0915, 1), 1);
 }
 
 TEST(gb9c_not_consonant) {
-  /* incb_state=2 but curr is not a consonant -> GB9 still catches Extend */
-  ASSERT_EQ(is_grapheme_break(GCB_EXTEND, GCB_EXTEND, 0, 0, 0x0300, 2), 0);
+  /* incb_state=2 but curr is not a consonant -> GB9c false, GB999 break */
+  ASSERT_EQ(is_grapheme_break(GCB_OTHER, GCB_OTHER, 0, 0, 0x0041, 2), 1);
 }
 
 /* ============================================================================
@@ -170,21 +199,24 @@ TEST(gb9c_not_consonant) {
  * ============================================================================ */
 
 TEST(gb11_extpict_zwj_extpict_no_break) {
-  /* Full GB11 condition met */
-  ASSERT_EQ(is_grapheme_break(GCB_ZWJ, GCB_EXTEND, 0, 1, 0x1F600, 0), 0);
+  /* Full GB11 condition met. curr prop is OTHER (emoji are GCB=Other),
+   * so GB11 itself decides — GB9 does not intercept. */
+  ASSERT_EQ(is_grapheme_break(GCB_ZWJ, GCB_OTHER, 0, 1, 0x1F600, 0), 0);
 }
 
 TEST(gb11_no_ext_pict) {
-  /* in_ext_pict=0 -> GB11 false */
-  int r = is_grapheme_break(GCB_ZWJ, GCB_EXTEND, 0, 0, 0x1F600, 0);
-  /* Falls to GB9 (curr=EXTEND), so no break */
-  ASSERT_EQ(r, 0);
+  /* in_ext_pict=0 -> GB11 false, GB999 break */
+  ASSERT_EQ(is_grapheme_break(GCB_ZWJ, GCB_OTHER, 0, 0, 0x1F600, 0), 1);
 }
 
 TEST(gb11_prev_not_zwj) {
-  /* prev is not ZWJ -> GB11 false, but GB9 catches EXTEND */
-  int r = is_grapheme_break(GCB_EXTEND, GCB_EXTEND, 0, 1, 0x1F600, 0);
-  ASSERT_EQ(r, 0); /* GB9 */
+  /* prev is not ZWJ -> GB11 false, GB999 break */
+  ASSERT_EQ(is_grapheme_break(GCB_OTHER, GCB_OTHER, 0, 1, 0x1F600, 0), 1);
+}
+
+TEST(gb11_curr_not_extpict) {
+  /* curr_cp is not Extended_Pictographic -> GB11 false, GB999 break */
+  ASSERT_EQ(is_grapheme_break(GCB_ZWJ, GCB_OTHER, 0, 1, 0x0041, 0), 1);
 }
 
 /* ============================================================================
@@ -203,7 +235,12 @@ TEST(gb13_ri_even_break) {
 
 TEST(gb12_ri_not_prev) {
   /* prev is not RI -> GB12/13 not reached, falls to GB999 */
-  ASSERT_EQ(is_grapheme_break(GCB_EXTEND, GCB_REGIONAL_INDICATOR, 0, 0, 0x1F1FA, 0), 1);
+  ASSERT_EQ(is_grapheme_break(GCB_OTHER, GCB_REGIONAL_INDICATOR, 0, 0, 0x1F1FA, 0), 1);
+}
+
+TEST(gb12_ri_not_curr) {
+  /* curr is not RI -> GB12/13 curr-side false, falls to GB999 */
+  ASSERT_EQ(is_grapheme_break(GCB_REGIONAL_INDICATOR, GCB_OTHER, 1, 0, 0x0041, 0), 1);
 }
 
 /* ============================================================================
@@ -212,7 +249,7 @@ TEST(gb12_ri_not_prev) {
 
 TEST(gb999_default_break) {
   /* Two unrelated codepoints with no special properties -> break */
-  ASSERT_EQ(is_grapheme_break(GCB_EXTEND, GCB_L, 0, 0, 0x1100, 0), 1);
+  ASSERT_EQ(is_grapheme_break(GCB_OTHER, GCB_OTHER, 0, 0, 0x0041, 0), 1);
 }
 
 /* ============================================================================
@@ -269,7 +306,7 @@ int main(void) {
   RUN(gb4_control_break);
   RUN(gb4_cr_not_lf_break);
   RUN(gb4_lf_break);
-  RUN(gb4_other_no_break);
+  RUN(gb4_other_falls_through);
 
   printf("\nGB5 (CONTROL/CR/LF break before):\n");
   RUN(gb5_control_break);
@@ -281,15 +318,20 @@ int main(void) {
   RUN(gb6_l_v_no_break);
   RUN(gb6_l_lv_no_break);
   RUN(gb6_l_lvt_no_break);
+  RUN(gb6_l_t_break);
   RUN(gb6_l_other_break);
 
   printf("\nGB7 (Hangul LV/V):\n");
   RUN(gb7_lv_v_no_break);
   RUN(gb7_v_t_no_break);
+  RUN(gb7_other_v_break);
+  RUN(gb7_lv_other_break);
 
   printf("\nGB8 (Hangul LVT/T):\n");
   RUN(gb8_lvt_t_no_break);
   RUN(gb8_t_t_no_break);
+  RUN(gb8_other_t_break);
+  RUN(gb8_lvt_other_break);
 
   printf("\nGB9 (Extend/ZWJ):\n");
   RUN(gb9_extend_no_break);
@@ -310,11 +352,13 @@ int main(void) {
   RUN(gb11_extpict_zwj_extpict_no_break);
   RUN(gb11_no_ext_pict);
   RUN(gb11_prev_not_zwj);
+  RUN(gb11_curr_not_extpict);
 
   printf("\nGB12/13 (Regional Indicators):\n");
   RUN(gb12_ri_odd_no_break);
   RUN(gb13_ri_even_break);
   RUN(gb12_ri_not_prev);
+  RUN(gb12_ri_not_curr);
 
   printf("\nGB999 (Default):\n");
   RUN(gb999_default_break);

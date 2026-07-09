@@ -1299,7 +1299,7 @@ static inline size_t utf8_decode(const char *bytes, size_t length,
     return 1;
   }
   /* Determine sequence length from first byte */
-  int sequence_length;
+  size_t sequence_length;
   uint32_t cp;
   if ((first & 0xE0) == 0xC0) {
     sequence_length = 2;
@@ -1314,11 +1314,11 @@ static inline size_t utf8_decode(const char *bytes, size_t length,
     *codepoint = UTF8_REPLACEMENT_CHAR;
     return 1;
   }
-  if (length < (size_t)sequence_length) {
+  if (length < sequence_length) {
     *codepoint = UTF8_REPLACEMENT_CHAR;
     return 1;
   }
-  for (int i = 1; i < sequence_length; i++) {
+  for (size_t i = 1; i < sequence_length; i++) {
     unsigned char byte = (unsigned char)bytes[i];
     if ((byte & 0xC0) != 0x80) {
       *codepoint = UTF8_REPLACEMENT_CHAR;
@@ -1663,7 +1663,7 @@ static inline int utf8_valid(const char *text, size_t length, size_t *error_offs
   size_t offset = 0;
   while (offset < length) {
     uint32_t codepoint;
-    int bytes = utf8_decode(text + offset, length - offset, &codepoint);
+    size_t bytes = utf8_decode(text + offset, length - offset, &codepoint);
     if (codepoint == UTF8_REPLACEMENT_CHAR) {
       unsigned char first = (unsigned char)text[offset];
       if (first != 0xEF || length - offset < 3 ||
@@ -1715,7 +1715,7 @@ static inline size_t utf8_truncate(const char *text, size_t length, size_t max_c
       if (width + (size_t)char_width > max_cols) {
         return offset;
       }
-      width += char_width;
+      width += (size_t)char_width;
     }
     offset = utf8_next(text, length, offset);
   }
@@ -1869,9 +1869,9 @@ static inline int gstr_is_whitespace(const char *g, size_t g_len) {
     return 1;
   /* Decode the first codepoint */
   uint32_t cp;
-  int bytes = utf8_decode(g, g_len, &cp);
+  size_t bytes = utf8_decode(g, g_len, &cp);
   /* Only single-codepoint graphemes qualify as whitespace */
-  if ((size_t)bytes != g_len)
+  if (bytes != g_len)
     return 0;
   switch (cp) {
   case 0x0009: /* CHARACTER TABULATION (HT) */
@@ -2231,8 +2231,8 @@ static inline int gstrstartswith(const char *s, size_t s_len,
     if (s_off >= s_len)
       return 0;
 
-    int s_next = utf8_next_grapheme(s, s_len, s_off);
-    int p_next = utf8_next_grapheme(prefix, prefix_len, p_off);
+    size_t s_next = utf8_next_grapheme(s, s_len, s_off);
+    size_t p_next = utf8_next_grapheme(prefix, prefix_len, p_off);
 
     size_t s_glen = (size_t)(s_next - s_off);
     size_t p_glen = (size_t)(p_next - p_off);
@@ -2272,15 +2272,15 @@ static inline int gstrendswith(const char *s, size_t s_len, const char *suffix,
   size_t s_offset = gstroff(s, s_len, start_grapheme);
 
   /* Compare remaining graphemes */
-  size_t s_off = (int)s_offset;
+  size_t s_off = s_offset;
   size_t suf_off = 0;
 
   while (suf_off < suffix_len) {
     if (s_off >= s_len)
       return 0;
 
-    int s_next = utf8_next_grapheme(s, s_len, s_off);
-    int suf_next = utf8_next_grapheme(suffix, suffix_len, suf_off);
+    size_t s_next = utf8_next_grapheme(s, s_len, s_off);
+    size_t suf_next = utf8_next_grapheme(suffix, suffix_len, suf_off);
 
     size_t s_glen = (size_t)(s_next - s_off);
     size_t suf_glen = (size_t)(suf_next - suf_off);
@@ -2378,8 +2378,8 @@ static inline const char *gstrstr(const char *haystack, size_t h_len,
         break;
       }
 
-      int h_next = utf8_next_grapheme(haystack, h_len, h_pos);
-      int n_next = utf8_next_grapheme(needle, n_len, n_pos);
+      size_t h_next = utf8_next_grapheme(haystack, h_len, h_pos);
+      size_t n_next = utf8_next_grapheme(needle, n_len, n_pos);
 
       size_t h_glen = (h_next - h_pos);
       size_t n_glen = (n_next - n_pos);
@@ -2436,8 +2436,8 @@ static inline const char *gstrrstr(const char *haystack, size_t h_len,
         break;
       }
 
-      int h_next = utf8_next_grapheme(haystack, h_len, h_pos);
-      int n_next = utf8_next_grapheme(needle, n_len, n_pos);
+      size_t h_next = utf8_next_grapheme(haystack, h_len, h_pos);
+      size_t n_next = utf8_next_grapheme(needle, n_len, n_pos);
 
       size_t h_glen = (h_next - h_pos);
       size_t n_glen = (n_next - n_pos);
@@ -2493,8 +2493,8 @@ static inline const char *gstrcasestr(const char *haystack, size_t h_len,
         break;
       }
 
-      int h_next = utf8_next_grapheme(haystack, h_len, h_pos);
-      int n_next = utf8_next_grapheme(needle, n_len, n_pos);
+      size_t h_next = utf8_next_grapheme(haystack, h_len, h_pos);
+      size_t n_next = utf8_next_grapheme(needle, n_len, n_pos);
 
       size_t h_glen = (h_next - h_pos);
       size_t n_glen = (n_next - n_pos);
@@ -2660,19 +2660,19 @@ static inline size_t gstrsub(char *dst, size_t dst_size, const char *src,
   size_t bytes_to_copy = offset - start_offset;
 
   if (bytes_to_copy >= dst_size) {
-    int fit_offset = (int)start_offset;
-    int last_complete = (int)start_offset;
+    size_t fit_offset = start_offset;
+    size_t last_complete = start_offset;
 
-    while ((size_t)fit_offset < start_offset + bytes_to_copy) {
+    while (fit_offset < start_offset + bytes_to_copy) {
       size_t next = utf8_next_grapheme(src, src_len, fit_offset);
-      if ((size_t)(next - (int)start_offset) < dst_size) {
+      if (next - start_offset < dst_size) {
         last_complete = next;
       } else {
         break;
       }
       fit_offset = next;
     }
-    bytes_to_copy = (size_t)(last_complete - (int)start_offset);
+    bytes_to_copy = last_complete - start_offset;
   }
 
   memcpy(dst, src + start_offset, bytes_to_copy);
@@ -3055,6 +3055,14 @@ static inline size_t gstrtrim(char *dst, size_t dst_size, const char *src,
  * ============================================================================
  */
 
+/*
+ * Reverses src grapheme-by-grapheme into dst. Returns bytes written.
+ *
+ * If dst is too small for the full reversal, the output is truncated at a
+ * grapheme boundary and contains the leading graphemes of the full
+ * reversal (equivalently: the trailing graphemes of src, reversed).
+ * Example: gstrrev(dst, 4, "hello", 5) writes "oll".
+ */
 static inline size_t gstrrev(char *dst, size_t dst_size, const char *src,
                              size_t src_len) {
   if (!dst || dst_size == 0)
@@ -3065,37 +3073,30 @@ static inline size_t gstrrev(char *dst, size_t dst_size, const char *src,
   if (!src || src_len == 0)
     return 0;
 
-  /* Pass 1 (forward): measure how many complete graphemes fit in dst */
-  size_t total_bytes = 0;
-  size_t n_graphemes = 0;
-  size_t offset = 0;
+  /* Segmentation must run forward: backward segmentation via
+   * utf8_prev_grapheme mis-pairs regional-indicator (flag) runs longer
+   * than its bounded backtrack window. Walk forward to the first
+   * grapheme boundary from which the rest of src fits in dst; the
+   * output is those trailing graphemes, placed in reverse order. */
+  size_t cut = 0;
+  while (src_len - cut >= dst_size) {
+    cut = utf8_next_grapheme(src, src_len, cut);
+  }
+
+  size_t out_len = src_len - cut;
+  size_t pos = out_len;
+  size_t offset = cut;
+
   while (offset < src_len) {
     size_t next = utf8_next_grapheme(src, src_len, offset);
-    size_t glen = (next - offset);
-    if (total_bytes + glen >= dst_size)
-      break;
-    total_bytes += glen;
-    n_graphemes++;
+    size_t glen = next - offset;
+    pos -= glen;
+    memcpy(dst + pos, src + offset, glen);
     offset = next;
   }
 
-  if (n_graphemes == 0)
-    return 0;
-
-  /* Pass 2 (backward): copy graphemes in reverse order into dst.
-   * Walk backward from the end of the measured region (total_bytes). */
-  size_t written = 0;
-  size_t current_end = (int)total_bytes;
-  for (size_t i = 0; i < n_graphemes; i++) {
-    int start = utf8_prev_grapheme(src, src_len, current_end);
-    size_t glen = (current_end - start);
-    memcpy(dst + written, src + start, glen);
-    written += glen;
-    current_end = start;
-  }
-
-  dst[written] = '\0';
-  return written;
+  dst[out_len] = '\0';
+  return out_len;
 }
 
 /*
@@ -3127,12 +3128,12 @@ static inline size_t gstrreplace(char *dst, size_t dst_size, const char *src,
     if (!found) {
       size_t to_copy = remaining;
       if (written + to_copy >= dst_size) {
-        int fit_offset = 0;
+        size_t fit_offset = 0;
         size_t last_complete = 0;
         size_t max_bytes = dst_size - written - 1;
 
-        while ((size_t)fit_offset < to_copy && (size_t)fit_offset < max_bytes) {
-          size_t next = utf8_next_grapheme(pos, (int)remaining, fit_offset);
+        while (fit_offset < to_copy && fit_offset < max_bytes) {
+          size_t next = utf8_next_grapheme(pos, remaining, fit_offset);
           if (next <= max_bytes) {
             last_complete = next;
           } else {
@@ -3151,13 +3152,12 @@ static inline size_t gstrreplace(char *dst, size_t dst_size, const char *src,
 
     if (before_len > 0) {
       if (written + before_len >= dst_size) {
-        int fit_offset = 0;
+        size_t fit_offset = 0;
         size_t last_complete = 0;
         size_t max_bytes = dst_size - written - 1;
 
-        while ((size_t)fit_offset < before_len &&
-               (size_t)fit_offset < max_bytes) {
-          size_t next = utf8_next_grapheme(pos, (int)before_len, fit_offset);
+        while (fit_offset < before_len && fit_offset < max_bytes) {
+          size_t next = utf8_next_grapheme(pos, before_len, fit_offset);
           if (next <= max_bytes) {
             last_complete = next;
           } else {
@@ -3176,11 +3176,11 @@ static inline size_t gstrreplace(char *dst, size_t dst_size, const char *src,
 
     if (new_str && new_len > 0) {
       if (written + new_len >= dst_size) {
-        int fit_offset = 0;
+        size_t fit_offset = 0;
         size_t last_complete = 0;
         size_t max_bytes = dst_size - written - 1;
 
-        while ((size_t)fit_offset < new_len && (size_t)fit_offset < max_bytes) {
+        while (fit_offset < new_len && fit_offset < max_bytes) {
           size_t next = utf8_next_grapheme(new_str, new_len, fit_offset);
           if (next <= max_bytes) {
             last_complete = next;
@@ -3340,7 +3340,7 @@ static inline size_t gstrellipsis(char *dst, size_t dst_size, const char *src,
       size_t offset = 0;
       size_t last_complete = 0;
       while (offset < remaining && offset < ellipsis_len) {
-        size_t next = utf8_next_grapheme(ellipsis, (int)ellipsis_len, offset);
+        size_t next = utf8_next_grapheme(ellipsis, ellipsis_len, offset);
         if (next <= remaining) {
           last_complete = next;
         } else {
@@ -3616,20 +3616,16 @@ static inline size_t gstr_grapheme_width(const char *s, size_t byte_len,
   int has_vs16 = 0;
   int has_vs15 = 0;
   int has_keycap = 0;
+  int has_ext_pict = 0;
   int regional_count = 0;
-  uint32_t base_cp = 0;
+  uint32_t ext_pict_cp = 0;
   size_t cp_offset = offset;
-  int first = 1;
 
   while (cp_offset < next) {
     uint32_t cp;
-    int cp_bytes = utf8_decode(s + cp_offset, byte_len - cp_offset, &cp);
-    if (cp_bytes <= 0)
+    size_t cp_bytes = utf8_decode(s + cp_offset, byte_len - cp_offset, &cp);
+    if (cp_bytes == 0)
       break;
-    if (first) {
-      base_cp = cp;
-      first = 0;
-    }
     if (cp == 0x200D) {
       has_zwj = 1;
     }
@@ -3645,13 +3641,20 @@ static inline size_t gstr_grapheme_width(const char *s, size_t byte_len,
     if (cp >= 0x1F1E6 && cp <= 0x1F1FF) {
       regional_count++;
     }
+    if (!has_ext_pict && is_extended_pictographic(cp)) {
+      has_ext_pict = 1;
+      ext_pict_cp = cp;
+    }
     cp_offset += cp_bytes;
   }
 
   /* ZWJ sequences and flags render as 2 columns. The ZWJ rule needs an
-   * emoji base: a lone ZWJ or text+ZWJ cluster is not an emoji sequence
-   * and renders at the summed codepoint width (ZWJ itself is zero). */
-  if ((has_zwj && is_extended_pictographic(base_cp)) || regional_count == 2) {
+   * emoji base anywhere in the cluster: a lone ZWJ or text+ZWJ cluster is
+   * not an emoji sequence and renders at the summed codepoint width (ZWJ
+   * itself is zero). Checking the whole cluster rather than its first
+   * codepoint keeps Prepend-led clusters (e.g. U+0600 + emoji ZWJ
+   * sequence) at width 2. */
+  if ((has_zwj && has_ext_pict) || regional_count == 2) {
     return 2;
   }
 
@@ -3661,9 +3664,9 @@ static inline size_t gstr_grapheme_width(const char *s, size_t byte_len,
   }
 
   /* VS16 emoji presentation: ExtPict + FE0F (without VS15) -> width 2 */
-  if (has_vs16 && !has_vs15 && is_extended_pictographic(base_cp)) {
-    /* Only override if the base isn't already wide */
-    int base_width = utf8_cpwidth(base_cp);
+  if (has_vs16 && !has_vs15 && has_ext_pict) {
+    /* Only override if the pictographic base isn't already wide */
+    int base_width = utf8_cpwidth(ext_pict_cp);
     if (base_width < 2) {
       return 2;
     }
@@ -3697,7 +3700,7 @@ static inline size_t gstrwtrunc(char *dst, size_t dst_size, const char *src,
 
   size_t accumulated = 0;
   size_t offset = 0;
-  int last_valid = 0;
+  size_t last_valid = 0;
 
   while (offset < src_len) {
     size_t next = utf8_next_grapheme(src, src_len, offset);
@@ -3713,7 +3716,7 @@ static inline size_t gstrwtrunc(char *dst, size_t dst_size, const char *src,
   }
 
   /* Copy bytes up to last complete grapheme */
-  size_t to_copy = (size_t)last_valid;
+  size_t to_copy = last_valid;
   if (to_copy >= dst_size) {
     to_copy = dst_size - 1;
     /* Find last complete grapheme that fits in buffer */

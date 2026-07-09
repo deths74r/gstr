@@ -62,7 +62,18 @@ $(TESTDIR)/test_mcdc_grapheme_break: $(TESTDIR)/test_mcdc_grapheme_break.c $(TES
 $(TESTDIR)/test_unicode_punct: $(TESTDIR)/test_unicode_punct.c $(TESTDIR)/test_macros.h $(HEADER)
 	$(CC) $(CFLAGS_DEBUG) -I$(INCDIR) -I$(TESTDIR) $< -o $@
 
-build-test: $(TESTDIR)/test_gstr $(TESTDIR)/test_grapheme_walk $(TESTDIR)/test_utf8_layer $(TESTDIR)/test_edge_cases $(TESTDIR)/test_mcdc_grapheme_break $(TESTDIR)/test_unicode_punct
+$(TESTDIR)/test_gstr_stress: $(TESTDIR)/test_gstr_stress.c $(HEADER)
+	$(CC) $(CFLAGS_DEBUG) $(VERSION_FLAGS) -I$(INCDIR) $< -o $@
+
+$(TESTDIR)/test_new_functions_stress: $(TESTDIR)/test_new_functions_stress.c $(HEADER)
+	$(CC) $(CFLAGS_DEBUG) -I$(INCDIR) $< -o $@
+
+# Built with the optimized flags: the >2 GB boundary tests are too slow at
+# -O0, and this keeps at least one optimized build in the default target.
+$(TESTDIR)/test_type_boundary: $(TESTDIR)/test_type_boundary.c $(TESTDIR)/test_macros.h $(HEADER)
+	$(CC) $(CFLAGS) -I$(INCDIR) -I$(TESTDIR) $< -o $@
+
+build-test: $(TESTDIR)/test_gstr $(TESTDIR)/test_grapheme_walk $(TESTDIR)/test_utf8_layer $(TESTDIR)/test_edge_cases $(TESTDIR)/test_mcdc_grapheme_break $(TESTDIR)/test_unicode_punct $(TESTDIR)/test_gstr_stress $(TESTDIR)/test_new_functions_stress $(TESTDIR)/test_type_boundary
 
 run-test: build-test
 	./$(TESTDIR)/test_gstr
@@ -71,8 +82,20 @@ run-test: build-test
 	./$(TESTDIR)/test_edge_cases
 	./$(TESTDIR)/test_mcdc_grapheme_break
 	./$(TESTDIR)/test_unicode_punct
+	./$(TESTDIR)/test_gstr_stress
+	./$(TESTDIR)/test_new_functions_stress
+	./$(TESTDIR)/test_type_boundary
 
 test: run-test
+
+# Includes the >2 GB boundary tests (offsets past INT_MAX in
+# gstrendswith/gstrsub/gstrrev/gstrstr/gstrreplace). Each grapheme-walks
+# ~2^31 positions and takes 1-5 minutes at -O3, and the run needs >2 GB
+# RAM, so the default test target skips them. Run this before releases.
+test-boundary-full: $(TESTDIR)/test_type_boundary
+	GSTR_FULL_BOUNDARY=1 ./$(TESTDIR)/test_type_boundary
+
+.PHONY: test-boundary-full
 
 # ============================================================================
 # Tools
@@ -113,6 +136,9 @@ clean:
 	rm -f $(TESTDIR)/test_edge_cases
 	rm -f $(TESTDIR)/test_mcdc_grapheme_break
 	rm -f $(TESTDIR)/test_unicode_punct
+	rm -f $(TESTDIR)/test_gstr_stress
+	rm -f $(TESTDIR)/test_new_functions_stress
+	rm -f $(TESTDIR)/test_type_boundary
 	rm -f tools/cursor_walk
 	rm -f *.db-shm *.db-wal
 	rm -rf scripts/.unicode_cache/

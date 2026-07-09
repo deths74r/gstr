@@ -361,10 +361,10 @@ static void test_gstrrstr_comprehensive(void) {
     printf("  FAIL: not found\n");
   }
 
-  /* Empty needle - returns end */
+  /* Empty needle - returns haystack (strstr convention) */
   const char *hay = "hello";
   p = gstrrstr(hay, 5, "", 0);
-  if (p == hay + 5)
+  if (p == hay)
     passed++;
   else {
     failed++;

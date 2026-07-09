@@ -9,6 +9,7 @@ test/test_utf8_layer
 test/test_edge_cases
 test/test_mcdc_grapheme_break
 test/test_unicode_punct
+test/test_type_boundary
 tools/cursor_walk
 *.db
 *.db-shm

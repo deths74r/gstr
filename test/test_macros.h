@@ -19,9 +19,12 @@ static int tests_failed = 0;
 #define RUN(name)                                                              \
   do {                                                                         \
     printf("  %-50s", #name);                                                  \
+    int fails_before = tests_failed;                                           \
     test_##name();                                                             \
-    printf(" PASS\n");                                                         \
-    tests_passed++;                                                            \
+    if (tests_failed == fails_before) {                                        \
+      printf(" PASS\n");                                                       \
+      tests_passed++;                                                          \
+    }                                                                          \
   } while (0)
 
 #define ASSERT(cond)                                                           \

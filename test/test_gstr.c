@@ -19,9 +19,12 @@ static int tests_failed = 0;
 #define RUN(name)                                                              \
   do {                                                                         \
     printf("  %-50s", #name);                                                  \
+    int fails_before = tests_failed;                                           \
     test_##name();                                                             \
-    printf(" PASS\n");                                                         \
-    tests_passed++;                                                            \
+    if (tests_failed == fails_before) {                                        \
+      printf(" PASS\n");                                                       \
+      tests_passed++;                                                          \
+    }                                                                          \
   } while (0)
 
 #define ASSERT(cond)                                                           \
@@ -1049,9 +1052,9 @@ TEST(gstrrev_family) {
 TEST(gstrrev_buffer_overflow) {
   char buf[4];
   size_t n = gstrrev(buf, sizeof(buf), "hello", 5);
-  /* Can fit 3 chars + null; first 3 graphemes reversed */
+  /* Can fit 3 chars + null; truncation keeps the head of the reversal */
   ASSERT_EQ_SIZE(n, 3);
-  ASSERT_STR_EQ(buf, "leh"); /* First 3 chars "hel" reversed */
+  ASSERT_STR_EQ(buf, "oll"); /* Head of "olleh" */
 }
 
 /* ============================================================================
@@ -1276,6 +1279,85 @@ TEST(gstrwidth_vs16_non_extpict) {
 TEST(gstrwidth_bare_extpict) {
   /* ❤ = U+2764 bare - text-default ExtPict without VS16 = 1 column */
   ASSERT_EQ_SIZE(gstrwidth("\xE2\x9D\xA4", 3), 1);
+}
+
+/* ============================================================================
+ * gstr_grapheme_width Tests (direct, per-cluster)
+ * ============================================================================
+ */
+
+TEST(grapheme_width_ascii) {
+  size_t next = utf8_next_grapheme(ASCII, ASCII_LEN, 0);
+  ASSERT_EQ_SIZE(gstr_grapheme_width(ASCII, ASCII_LEN, 0, next), 1);
+}
+
+TEST(grapheme_width_cjk) {
+  /* 日 = U+65E5, East Asian Wide */
+  const char *s = "\xE6\x97\xA5";
+  size_t next = utf8_next_grapheme(s, 3, 0);
+  ASSERT_EQ_SIZE(next, 3);
+  ASSERT_EQ_SIZE(gstr_grapheme_width(s, 3, 0, next), 2);
+}
+
+TEST(grapheme_width_family_zwj) {
+  size_t next = utf8_next_grapheme(FAMILY, FAMILY_LEN, 0);
+  ASSERT_EQ_SIZE(next, FAMILY_LEN);
+  ASSERT_EQ_SIZE(gstr_grapheme_width(FAMILY, FAMILY_LEN, 0, next), 2);
+}
+
+TEST(grapheme_width_flag_pair) {
+  size_t next = utf8_next_grapheme(FLAG_CA, FLAG_CA_LEN, 0);
+  ASSERT_EQ_SIZE(next, FLAG_CA_LEN);
+  ASSERT_EQ_SIZE(gstr_grapheme_width(FLAG_CA, FLAG_CA_LEN, 0, next), 2);
+}
+
+TEST(grapheme_width_keycap) {
+  /* 1️⃣ = U+0031 U+FE0F U+20E3 */
+  const char *s = "1\xEF\xB8\x8F\xE2\x83\xA3";
+  size_t next = utf8_next_grapheme(s, 7, 0);
+  ASSERT_EQ_SIZE(next, 7);
+  ASSERT_EQ_SIZE(gstr_grapheme_width(s, 7, 0, next), 2);
+}
+
+TEST(grapheme_width_degenerate_zwj) {
+  /* a + ZWJ: no emoji base, summed width = 1 */
+  const char *s = "a\xE2\x80\x8D";
+  size_t next = utf8_next_grapheme(s, 4, 0);
+  ASSERT_EQ_SIZE(next, 4);
+  ASSERT_EQ_SIZE(gstr_grapheme_width(s, 4, 0, next), 1);
+}
+
+TEST(grapheme_width_prepend_zwj_emoji) {
+  /* U+0600 (Prepend, zero width) + 👨 ZWJ 👩: one cluster (GB9b + GB11),
+   * and still an emoji ZWJ sequence = 2 columns even though the cluster's
+   * first codepoint is not Extended_Pictographic. */
+  const char *s = "\xD8\x80"
+                  "\xF0\x9F\x91\xA8\xE2\x80\x8D\xF0\x9F\x91\xA9";
+  size_t next = utf8_next_grapheme(s, 13, 0);
+  ASSERT_EQ_SIZE(next, 13);
+  ASSERT_EQ_SIZE(gstr_grapheme_width(s, 13, 0, next), 2);
+}
+
+TEST(grapheme_width_agrees_with_gstrwidth) {
+  /* Summing gstr_grapheme_width over every cluster must equal gstrwidth
+   * for the same string. */
+  const char *samples[] = {ASCII,   CAFE_DECOMPOSED, FAMILY,
+                           FLAG_CA, WAVE_SKIN,
+                           "\xE6\x97\xA5\xE6\x9C\xAC" "a" "\xF0\x9F\x98\x80"};
+  const size_t sample_lens[] = {ASCII_LEN, CAFE_DECOMPOSED_LEN, FAMILY_LEN,
+                                FLAG_CA_LEN, WAVE_SKIN_LEN, 11};
+  for (size_t i = 0; i < sizeof(samples) / sizeof(samples[0]); i++) {
+    const char *s = samples[i];
+    size_t len = sample_lens[i];
+    size_t sum = 0;
+    size_t off = 0;
+    while (off < len) {
+      size_t next = utf8_next_grapheme(s, len, off);
+      sum += gstr_grapheme_width(s, len, off, next);
+      off = next;
+    }
+    ASSERT_EQ_SIZE(sum, gstrwidth(s, len));
+  }
 }
 
 /* ============================================================================
@@ -1854,6 +1936,14 @@ int main(void) {
   RUN(gstrwidth_extpict_already_wide);
   RUN(gstrwidth_vs16_non_extpict);
   RUN(gstrwidth_bare_extpict);
+  RUN(grapheme_width_ascii);
+  RUN(grapheme_width_cjk);
+  RUN(grapheme_width_family_zwj);
+  RUN(grapheme_width_flag_pair);
+  RUN(grapheme_width_keycap);
+  RUN(grapheme_width_degenerate_zwj);
+  RUN(grapheme_width_prepend_zwj_emoji);
+  RUN(grapheme_width_agrees_with_gstrwidth);
 
   printf("\ngstrwtrunc Tests:\n");
   RUN(gstrwtrunc_ascii);

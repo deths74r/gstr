@@ -12,6 +12,10 @@
 
 #include <gstr.h>
 
+/* Global count of detected problems; nonzero means the binary exits 1 so
+ * `make test` actually fails on regressions. */
+static int g_bugs = 0;
+
 /* Print a single codepoint as U+XXXX */
 static void print_cp(uint32_t cp) {
   if (cp < 0x10000)
@@ -65,11 +69,13 @@ static void walk_graphemes(const char *label, const char *text) {
     if (next <= offset) {
       printf("  *** BUG: utf8_next_grapheme returned %d (not advancing from %d)!\n",
              next, offset);
+      g_bugs++;
       break;
     }
     if (span > 50) {
       printf("  *** BUG: grapheme spans %d bytes — likely skipping multiple graphemes\n",
              span);
+      g_bugs++;
     }
 
     offset = next;
@@ -101,6 +107,7 @@ static void verify_indexing(const char *label, const char *text) {
 
   if ((size_t)walk_count != count) {
     printf("  *** MISMATCH: gstrlen=%zu vs walk=%d\n", count, walk_count);
+    g_bugs++;
   }
 
   /* Check gstroff for each index */
@@ -118,6 +125,7 @@ static void verify_indexing(const char *label, const char *text) {
     printf("  All %d gstroff indices match walk offsets.\n", walk_count);
   } else {
     printf("  *** %d mismatches found!\n", mismatches);
+    g_bugs += mismatches;
   }
   printf("\n");
 }
@@ -127,6 +135,7 @@ static void walk_file(const char *path) {
 FILE *f = fopen(path, "r");
 if (!f) {
 printf("*** Cannot open %s\n", path);
+g_bugs++;
 return;
 }
 
@@ -205,6 +214,7 @@ lineno, walk_count, len > 72 ? 72 : len, line);
 
 fclose(f);
 printf("\n--- %d lines, %d problems ---\n\n", lineno, total_bugs);
+g_bugs += total_bugs;
 }
 
 int main(int argc, char **argv) {
@@ -213,7 +223,8 @@ if (argc > 1) {
 for (int i = 1; i < argc; i++) {
 walk_file(argv[i]);
 }
-return 0;
+printf("%d problems detected.\n", g_bugs);
+return g_bugs > 0 ? 1 : 0;
 }
   printf("Grapheme Walk Test\n");
   printf("==================\n\n");
@@ -236,6 +247,7 @@ return 0;
   size_t flen = gstrlen(family, strlen(family));
   if (flen != 1) {
     printf("  *** BUG: Family emoji = %zu graphemes (expected 1)\n\n", flen);
+    g_bugs++;
   }
 
   /* Emoji followed by non-emoji — is_extended_pictographic pollution test */
@@ -249,6 +261,7 @@ return 0;
   size_t flag_count = gstrlen(flags, strlen(flags));
   if (flag_count != 2) {
     printf("  *** BUG: Two flags = %zu graphemes (expected 2)\n\n", flag_count);
+    g_bugs++;
   }
 
   /* Card characters (SMP, 4-byte UTF-8) */
@@ -258,6 +271,7 @@ return 0;
   size_t card_count = gstrlen(cards, strlen(cards));
   if (card_count != 5) {
     printf("  *** BUG: 5 cards = %zu graphemes (expected 5)\n\n", card_count);
+    g_bugs++;
   }
 
   /* Symbols that border EAW_WIDE_RANGES boundaries */
@@ -267,6 +281,7 @@ return 0;
   size_t sym_count = gstrlen(boundary, strlen(boundary));
   if (sym_count != 5) {
     printf("  *** BUG: 5 symbols = %zu graphemes (expected 5)\n\n", sym_count);
+    g_bugs++;
   }
 
  /* ================================================================
@@ -285,6 +300,7 @@ walk_graphemes("★+ZWJ+★ (U+2605 not ExtPict)", star_zwj);
 size_t n = gstrlen(star_zwj, strlen(star_zwj));
 if (n != 2) {
 printf(" *** BUG: ★‍★ = %zu graphemes (expected 2, ★ is not ExtPict)\n\n", n);
+g_bugs++;
 } else {
 printf(" OK: ★‍★ = 2 graphemes (★ is not Extended_Pictographic)\n\n");
 }
@@ -298,6 +314,7 @@ walk_graphemes("☀+ZWJ+☀ (U+2600 IS ExtPict)", sun_zwj);
 size_t n = gstrlen(sun_zwj, strlen(sun_zwj));
 if (n != 1) {
 printf(" *** BUG: ☀‍☀ = %zu graphemes (expected 1)\n\n", n);
+g_bugs++;
 } else {
 printf(" OK: ☀‍☀ = 1 grapheme (GB11 applies)\n\n");
 }
@@ -310,6 +327,7 @@ walk_graphemes("中+ZWJ+中 (CJK not ExtPict)", cjk_zwj);
 size_t n = gstrlen(cjk_zwj, strlen(cjk_zwj));
 if (n != 2) {
 printf(" *** BUG: 中‍中 = %zu graphemes (expected 2)\n\n", n);
+g_bugs++;
 } else {
 printf(" OK: 中‍中 = 2 graphemes (CJK correctly not joined)\n\n");
 }
@@ -323,6 +341,7 @@ walk_graphemes("♠+ZWJ+♠ (U+2660 IS ExtPict)", spade_zwj);
 size_t n = gstrlen(spade_zwj, strlen(spade_zwj));
 if (n != 1) {
 printf(" *** BUG: ♠‍♠ = %zu graphemes (expected 1)\n\n", n);
+g_bugs++;
 } else {
 printf(" OK: ♠‍♠ = 1 grapheme (GB11 applies, width=1 per EAW)\n\n");
 }
@@ -356,6 +375,7 @@ if (got != checks[i].expect) bugs++;
 }
 if (bugs > 0) {
 printf(" *** %d/%d is_extended_pictographic checks FAILED\n", bugs, num);
+g_bugs += bugs;
 }
 printf("\n");
 }
@@ -418,6 +438,7 @@ printf("\n");
   }
 
   printf("\n  %d/%d width checks failed.\n", width_bugs, num_checks);
+  g_bugs += width_bugs;
 
   /* Simulate cursor walk across the problem substring */
   printf("\n  Cursor drift simulation for the end of line 36:\n");
@@ -457,11 +478,13 @@ printf("\n");
   }
   printf("\n  Final drift: editor thinks col %d, terminal at col %d (off by %d)\n",
          editor_col, terminal_col, editor_col - terminal_col);
-  if (editor_col != terminal_col)
+  if (editor_col != terminal_col) {
     printf("  *** BUG: width table disagrees with expected terminal width.\n\n");
-  else
+    g_bugs++;
+  } else {
     printf("  OK: zero drift, width table matches expected terminal width.\n\n");
+  }
 
-  printf("Done.\n");
-  return 0;
+  printf("Done. %d problems detected.\n", g_bugs);
+  return g_bugs > 0 ? 1 : 0;
 }
