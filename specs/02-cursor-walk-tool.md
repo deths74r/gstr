@@ -1,5 +1,7 @@
 # Specification: `gstr-cursor-walk` -- Interactive Grapheme Cluster Cursor Walk Tool
 
+> **Historical note (2026-07-09):** the property/GCB-rule-chain view ("p"/`show_props` toggle, §UI) was shipped as a dead toggle (the key existed but no renderer was ever written) and has been removed from `tools/cursor_walk.c`. The props-view design below remains unimplemented; see AUDIT.md item 25.
+
 ## 1. Purpose
 
 `gstr-cursor-walk` is an interactive terminal tool and automated verifier for grapheme cluster segmentation in the gstr library. It lets a developer move a cursor through curated test strings one grapheme cluster at a time, exercising `utf8_next_grapheme` and `utf8_prev_grapheme` directly, while displaying full diagnostic information about each cluster's internal structure: byte offsets, codepoints, GCB properties, display widths, and raw hex. It also provides a non-interactive batch mode that mechanically verifies forward/backward navigation consistency across all test strings.

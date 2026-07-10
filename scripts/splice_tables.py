@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2025 Edward J Edmonds <edward.edmonds@gmail.com>
 """
 Splice generated Unicode tables into include/gstr.h.
 

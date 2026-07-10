@@ -1806,7 +1806,7 @@ static inline int gstr_grapheme_in_set(const char *g, size_t g_len, const char *
  *
  * Note: this covers 25 codepoints (the full Unicode White_Space set),
  * which is a superset of CommonMark's "Unicode whitespace character"
- * definition (17 codepoints: Zs + TAB + LF + FF + CR). The extra
+ * definition (21 codepoints: 17 Zs + TAB + LF + FF + CR). The extra
  * codepoints (VT, NEL, LS, PS) are rare in practice.
  */
 static inline int gstr_is_whitespace_cp(uint32_t cp) {
@@ -2361,8 +2361,6 @@ static inline const char *gstrstr(const char *haystack, size_t h_len,
     return NULL;
 
   size_t needle_graphemes = gstrlen(needle, n_len);
-  if (needle_graphemes == 0)
-    return haystack;
 
   size_t h_off = 0;
 
@@ -2419,8 +2417,6 @@ static inline const char *gstrrstr(const char *haystack, size_t h_len,
 
   const char *last_match = NULL;
   size_t needle_graphemes = gstrlen(needle, n_len);
-  if (needle_graphemes == 0)
-    return haystack;
 
   size_t h_off = 0;
 
@@ -2476,8 +2472,6 @@ static inline const char *gstrcasestr(const char *haystack, size_t h_len,
     return NULL;
 
   size_t needle_graphemes = gstrlen(needle, n_len);
-  if (needle_graphemes == 0)
-    return haystack;
 
   size_t h_off = 0;
 

@@ -1,5 +1,7 @@
 # Specification: Add `length` Parameter to `utf8_prev_grapheme`
 
+> **Historical note (2026-07-09):** references to the in-tree `gstr-zig`/`gstr-go`/`gstr-hare` bindings below are obsolete — the bindings were removed in commit cd98de4 (2026-03-21) before this spec was implemented. Binding-related steps were never applicable.
+
 ## 1. Problem Statement
 
 ### API Asymmetry

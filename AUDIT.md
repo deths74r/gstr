@@ -132,17 +132,17 @@ Status legend: `[ ]` open · `[x]` fixed · `[d]` deferred (with reason)
 
 ## C. README claims that are wrong
 
-- [ ] **9. "Freestanding: ✅" is false** (README.md:46). The header
+- [x] **9. "Freestanding: ✅" is false** (README.md:46). The header
   unconditionally includes `<stdlib.h>`/`<string.h>` and calls
   malloc/strlen/memcpy with no guards; it won't preprocess on a
   freestanding toolchain. Change to ❌ or build a real freestanding mode.
-- [ ] **10. Family emoji is 5 codepoints, not 7** (README.md:646);
+- [x] **10. Family emoji is 5 codepoints, not 7** (README.md:646);
   `utf8_cpcount` returns 5.
-- [ ] **11. `gstrellipsis` example output is "Hello W…", not "Hello…"**
+- [x] **11. `gstrellipsis` example output is "Hello W…", not "Hello…"**
   (README.md:438) — the ellipsis budget is counted in graphemes, not bytes.
-- [ ] **12. "Your First Program" passes len 14 for an 18-byte string**
+- [x] **12. "Your First Program" passes len 14 for an 18-byte string**
   (README.md:71), silently dropping the emoji it showcases.
-- [ ] **13. Stale counts and a bad example**: "340 tests across 4 suites"
+- [x] **13. Stale counts and a bad example**: "340 tests across 4 suites"
   (README.md:1099) is 6 suites/~430; the "GOOD" iteration example
   (README.md:831) still uses `int` offsets — the exact bug class of item 1.
   Also info-level: "46 functions" heading lists 44 (README.md:788);
@@ -150,22 +150,26 @@ Status legend: `[ ]` open · `[x]` fixed · `[d]` deferred (with reason)
 
 ## D. Dead code to delete
 
-- [ ] **14. `--hare` output mode in `scripts/gen_unicode_tables.py`**
+- [x] **14. `--hare` output mode in `scripts/gen_unicode_tables.py`**
   (lines 18-20, 471-486, 489-517, 524-528, 588-589). Its only consumer
   (gstr-hare/) was deleted in cd98de4; no fork or external consumer exists.
-- [ ] **15. `scripts/fix_int_size_t.py`** — spent one-shot whose broken
+- [x] **15. `scripts/fix_int_size_t.py`** — spent one-shot whose broken
   regexes caused item 1; its patterns can no longer match the header.
-- [ ] **16. `cursor_walk` dead branches**: the 'p' toggle (`show_props`
+- [x] **16. `cursor_walk` dead branches**: the 'p' toggle (`show_props`
   toggled at tools/cursor_walk.c:576, never read, advertised in help) and
   the unreachable empty-string/[SKIP] branches (:377-381, :589-593 — spec
   02's empty/NUL test entries were never added).
-- [ ] **17. Orphans**: `.gitignore` entries `test/test_single` and
-  `.zig-cache/`; fixture `test/utf8_test_samples.txt` (zero consumers in
-  all of git history; `grapheme_test_strings.txt` is only reachable via
-  cursor_walk's argv mode, which nothing runs); unreachable duplicated
-  guard `if (needle_graphemes == 0)` second checks in gstrstr/gstrrstr/
-  gstrcasestr (gstr.h:2363 area).
-- [ ] **18. Deleted-bindings debris in specs**: specs 03 (§6.1-6.3,
+- [x] **17. Orphans**: `.gitignore` entries `test/test_single` and
+  `.zig-cache/` removed; unreachable duplicated guard
+  `if (needle_graphemes == 0)` second checks removed from gstrstr/
+  gstrrstr/gstrcasestr. **Decision on the fixtures (not deleted):**
+  `test/utf8_test_samples.txt` and `test/grapheme_test_strings.txt` are
+  kept as manual diagnostic inputs for `test_grapheme_walk`'s file mode
+  (`./test/test_grapheme_walk test/<fixture>.txt`). They intentionally
+  contain U+FFFD/invalid-UTF-8 lines, so the tool flags "problems" on
+  them by design — that's why they are not wired into `make test`.
+  Delete them instead if manual-inspection data isn't worth keeping.
+- [x] **18. Deleted-bindings debris in specs**: specs 03 (§6.1-6.3,
   checklist), 04 (:197), 09 (:209) direct maintainers to update
   gstr-zig/gstr-go/gstr-hare files that were deleted before the specs were
   implemented. Strike or mark historical.
@@ -176,14 +180,17 @@ Status legend: `[ ]` open · `[x]` fixed · `[d]` deferred (with reason)
   *Partially fixed 2026-07-09:* the new test_type_boundary rule builds
   with $(CFLAGS), so one optimized build is now exercised per default
   test run. Still open: the other nine targets build only at -O0.
-- [ ] **20. `CC ?= clang` is a no-op** (Makefile:4) — GNU make's built-in
+- [x] **20. `CC ?= clang` is a no-op** (Makefile:4) — GNU make's built-in
   `CC = cc` means the ?= never fires; builds silently use cc.
-- [ ] **21. No C++-mode or C99-mode compile check**, despite 4cc5757
+- [x] **21. No C++-mode or C99-mode compile check**, despite 4cc5757
   shipping a C++ fix and the README claiming C99.
-- [ ] **22. `gstr.pc` staleness** (Makefile:90) — not regenerated when
-  VERSION/PREFIX change; tarball (non-git) builds install
-  `Version: 0.0.0+unknown`.
-- [ ] **23. SPDX headers missing on 5 tracked files** (incl.
+- [ ] **22. `gstr.pc` staleness** (Makefile:90).
+  *Partially fixed 2026-07-09:* gstr.pc now regenerates on every build
+  via a FORCE prerequisite, so VERSION/PREFIX changes can no longer
+  install a stale file. Still open: tarball (non-git) builds install
+  `Version: 0.0.0+unknown` — needs a release-process decision (e.g. a
+  VERSION file stamped at tag time).
+- [x] **23. SPDX headers missing on 5 tracked files** (incl.
   scripts/gen_unicode_tables.py).
 
 ## F. Bigger decisions — implement or formally defer
@@ -197,7 +204,8 @@ Status legend: `[ ]` open · `[x]` fixed · `[d]` deferred (with reason)
   endswith backward-walk, overlap docs + memmove, gstrwellipsis, namespace
   prefixing) — mark deferred in the specs; spec 02's interactive features
   ('g' goto key, char-name table, SIGWINCH, ESC timeout, cursor-walk-verify
-  make target); spec 01's promised macros/coverage targets.
+  make target, and the props/GCB-rule-chain view whose dead toggle was
+  removed 2026-07-09); spec 01's promised macros/coverage targets.
 - [ ] **26. CODING_STANDARDS.md is violated wholesale** by gstr.h since the
   v2 rewrite (tabs, brace placement, signatures, trailing comments,
   abbreviated names — compliance applied in 1063c4f, reverted by v2).

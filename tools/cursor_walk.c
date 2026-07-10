@@ -290,7 +290,7 @@ static void enable_raw_mode(void) {
 enum key_code {
     KEY_NONE = 0,
     KEY_LEFT, KEY_RIGHT, KEY_UP, KEY_DOWN,
-    KEY_Q, KEY_B, KEY_P, KEY_V,
+    KEY_Q, KEY_B, KEY_V,
     KEY_HOME, KEY_END,
 };
 
@@ -300,7 +300,6 @@ static enum key_code read_key(void) {
 
     if (c == 'q' || c == 'Q') return KEY_Q;
     if (c == 'b' || c == 'B') return KEY_B;
-    if (c == 'p' || c == 'P') return KEY_P;
     if (c == 'v' || c == 'V') return KEY_V;
     if (c == '0') return KEY_HOME;
     if (c == '$') return KEY_END;
@@ -340,7 +339,6 @@ struct cursor_state {
     size_t byte_offset;    /* start of current grapheme */
     size_t grapheme_idx;
     int show_bytes;
-    int show_props;
     int show_verify;
 };
 
@@ -372,13 +370,7 @@ static void draw_screen(struct cursor_state *st) {
     /* Key help */
     move_to(2, 1);
     printf("\033[2m\xe2\x86\x90/\xe2\x86\x92:grapheme  \xe2\x86\x91/\xe2\x86\x93:string  "
-           "[b]ytes [p]rops [v]erify  [q]uit  [0]start [$]end\033[0m");
-
-    if (ts->length == 0) {
-        move_to(4, 1);
-        printf("\033[2m(empty string)\033[0m");
-        goto status_bar;
-    }
+           "[b]ytes [v]erify  [q]uit  [0]start [$]end\033[0m");
 
     /* Rendered string with highlighted current grapheme */
     move_to(4, 1);
@@ -480,7 +472,6 @@ static void draw_screen(struct cursor_state *st) {
         }
     }
 
-status_bar:
     /* Status bar */
     move_to(rows, 1);
     printf("\033[7m");
@@ -561,7 +552,7 @@ static void run_interactive(void) {
 
     enable_raw_mode();
 
-    struct cursor_state st = {0, 0, 0, 0, 0, 0};
+    struct cursor_state st = {0, 0, 0, 0, 0};
 
     for (;;) {
         draw_screen(&st);
@@ -573,7 +564,6 @@ static void run_interactive(void) {
             case KEY_UP:    prev_string(&st); break;
             case KEY_Q:     return;
             case KEY_B:     st.show_bytes = !st.show_bytes; break;
-            case KEY_P:     st.show_props = !st.show_props; break;
             case KEY_V:     st.show_verify = !st.show_verify; break;
             case KEY_HOME:  jump_start(&st); break;
             case KEY_END:   jump_end(&st); break;
@@ -587,11 +577,6 @@ static void run_interactive(void) {
  * ============================================================================ */
 
 static int verify_string(const struct test_string *ts, int string_idx) {
-    if (ts->length == 0) {
-        printf("[SKIP] String %2d: %-40s (empty)\n", string_idx, ts->label);
-        return 0;
-    }
-
     /* Forward pass: collect boundaries */
     size_t fwd[MAX_BOUNDARIES];
     size_t fwd_count = 0;

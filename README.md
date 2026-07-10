@@ -5,7 +5,7 @@ Copyright (c) 2025 Edward J Edmonds <edward.edmonds@gmail.com>
 
 # gstr.h
 
-A single-header UTF-8 and grapheme string library for C. No dependencies, just drop it in and go.
+A single-header UTF-8 and grapheme string library for C. No dependencies beyond libc, just drop it in and go.
 
 ## What Problem Does This Solve?
 
@@ -42,8 +42,8 @@ gstrlen("👨‍👩‍👧", 18);        // Returns 1 ✓
 | **Grapheme segmentation** | ✅ | ✅ | ✅ | ✅ | ✅ |
 | **Display width** | ✅ | ❌ | ✅ | ✅ | ✅ |
 | **Terminal-width padding** | ✅ | ❌ | ❌ | ❌ | ❌ |
-| **Dependencies** | None | None | None | libc | libc++ |
-| **Freestanding** | ✅ | ✅ | ❌ | ❌ | ❌ |
+| **Dependencies** | libc | None | None | libc | libc++ |
+| **Freestanding** | ❌ | ✅ | ❌ | ❌ | ❌ |
 
 *\* Header-only with `static inline` functions - no library binary. Compiler emits only the functions you call; unused code is eliminated.*
 
@@ -68,11 +68,11 @@ That's it. All functions are `static inline` - no separate compilation needed.
 
 int main(void) {
     const char *text = "Hello 世界! 👋";
-    size_t len = 14;  // byte length
+    size_t len = 18;  // byte length
     
-    printf("Bytes: %zu\n", len);                    // 14
-    printf("Graphemes: %zu\n", gstrlen(text, len)); // 10
-    printf("Display width: %zu\n", gstrwidth(text, len)); // 12 columns
+    printf("Bytes: %zu\n", len);                    // 18
+    printf("Graphemes: %zu\n", gstrlen(text, len)); // 11
+    printf("Display width: %zu\n", gstrwidth(text, len)); // 14 columns
     
     return 0;
 }
@@ -433,9 +433,10 @@ char buffer[32];
 gstrellipsis(buffer, sizeof(buffer), "Hello World", 11, 8, "...", 3);
 printf("%s\n", buffer);  // "Hello..."
 
-// Works with custom ellipsis
+// Works with custom ellipsis. The budget is counted in graphemes:
+// "…" is 1 grapheme, so 8 - 1 = 7 graphemes of text are kept.
 gstrellipsis(buffer, sizeof(buffer), "Hello World", 11, 8, "…", 3);
-printf("%s\n", buffer);  // "Hello…"
+printf("%s\n", buffer);  // "Hello W…"
 ```
 
 ### Padding Strings
@@ -639,11 +640,11 @@ if (!utf8_valid(bad, 14, &error_pos)) {
 **Problem:** How many Unicode codepoints (not graphemes)?
 
 ```c
-// Family emoji: 1 grapheme, but 7 codepoints
+// Family emoji: 1 grapheme, but 5 codepoints
 const char *family = "👨‍👩‍👧";
 
 size_t codepoints = utf8_cpcount(family, 18);
-printf("Codepoints: %zu\n", codepoints);  // 7 (👨 + ZWJ + 👩 + ZWJ + 👧 = 5 emoji + 2 ZWJ)
+printf("Codepoints: %zu\n", codepoints);  // 5 (👨 + ZWJ + 👩 + ZWJ + 👧 = 3 emoji + 2 ZWJ)
 ```
 
 ### Navigating by Codepoint
@@ -785,7 +786,7 @@ printf("Truncated: %.*s\n", (int)cut, text);  // "Hello" (only 5 cols fit)
 | `gstr_is_whitespace_cp(cp)` | Returns 1 if codepoint has the Unicode White\_Space property (25 codepoints). Codepoint-level variant of `gstr_is_whitespace()`. |
 
 
-### Grapheme String Layer (46 functions)
+### Grapheme String Layer
 
 #### Length Functions
 
@@ -828,9 +829,9 @@ Get pointer to Nth grapheme. Stores grapheme's byte length in `out_len`.
 > }
 >
 > // GOOD: O(n) - incremental advancement
-> int off = 0;
+> size_t off = 0;
 > while (off < len) {
->     int next = utf8_next_grapheme(s, len, off);  // O(1)
+>     size_t next = utf8_next_grapheme(s, len, off);  // O(1)
 >     // process s[off..next)
 >     off = next;
 > }
@@ -1066,6 +1067,12 @@ Center string by padding both sides. Returns bytes written.
 These functions work like their grapheme-count counterparts, but use **terminal column width** instead. Essential for proper alignment with CJK characters and emoji.
 
 ```c
+size_t gstr_grapheme_width(const char *s, size_t byte_len, size_t offset,
+                           size_t next);
+```
+Column width of the single grapheme cluster spanning `s[offset..next)` (as returned by `utf8_next_grapheme`). Handles ZWJ sequences, flags, keycaps, and VS15/VS16 presentation. Summing it over every cluster equals `gstrwidth`.
+
+```c
 size_t gstrwtrunc(char *dst, size_t dst_size, const char *src, size_t src_len,
                   size_t max_cols);
 ```
@@ -1096,7 +1103,9 @@ Center string by padding both sides to reach `target_cols` terminal columns. Ret
 
 ```bash
 make              # Build all test binaries
-make test         # Build and run all tests (340 tests across 4 suites)
+make test         # Build and run all tests (~900 assertions across 9 suites)
+make test-boundary-full  # Also run the >2 GB / past-INT_MAX regression
+                         # tests (minutes each; run before releases)
 make build-test   # Build test binaries without running
 make run-test     # Run previously built tests
 make cursor-walk  # Build the interactive grapheme diagnostic tool
@@ -1153,10 +1162,10 @@ It does **not** handle:
 
 ### How big is the library?
 
-- Single header: ~110KB source
+- Single header: ~124KB source
 - Compiled library: ~25KB
 - No runtime allocations (except gstrdup/gstrndup)
-- No dependencies
+- No dependencies beyond libc
 
 ### Is it thread-safe?
 

@@ -1,4 +1,7 @@
 /*
+ * SPDX-License-Identifier: MIT
+ * Copyright (c) 2025 Edward J Edmonds <edward.edmonds@gmail.com>
+ *
  * test_grapheme_walk.c - Reproduce grapheme cursor skipping bug
  *
  * Walks through a mixed-script string grapheme by grapheme using

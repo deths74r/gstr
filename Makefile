@@ -1,7 +1,14 @@
 # SPDX-License-Identifier: MIT
 # Copyright (c) 2025 Edward J Edmonds <edward.edmonds@gmail.com>
 
-CC ?= clang
+# Default to clang unless the user overrides CC. Plain 'CC ?= clang' never
+# fires under GNU make because CC has a built-in default of 'cc'.
+ifeq ($(origin CC),default)
+CC = clang
+endif
+ifeq ($(origin CXX),default)
+CXX = clang++
+endif
 CFLAGS = -Wall -Wextra -pedantic -std=c17 -O3
 CFLAGS_DEBUG = -Wall -Wextra -pedantic -std=c17 -g -O0
 
@@ -86,7 +93,18 @@ run-test: build-test
 	./$(TESTDIR)/test_new_functions_stress
 	./$(TESTDIR)/test_type_boundary
 
-test: run-test
+# Compile-only gates for the standards the README claims (C99) and the
+# C++ compatibility shipped in 4cc5757, plus spec 03's zero
+# -Wconversion/-Wsign-conversion acceptance criterion for the header.
+check-compat: $(HEADER)
+	echo '#include <gstr.h>' | $(CC) -x c -std=c99 -pedantic -Wall -Wextra -Werror -I$(INCDIR) -fsyntax-only -
+	echo '#include <gstr.h>' | $(CXX) -x c++ -std=c++17 -Wall -Wextra -Werror -I$(INCDIR) -fsyntax-only -
+	echo '#include <gstr.h>' | $(CC) -x c -std=c17 -Wconversion -Wsign-conversion -Werror -I$(INCDIR) -fsyntax-only -
+	@echo "check-compat: C99, C++17, and -Wconversion gates passed"
+
+.PHONY: check-compat
+
+test: check-compat run-test
 
 # Includes the >2 GB boundary tests (offsets past INT_MAX in
 # gstrendswith/gstrsub/gstrrev/gstrstr/gstrreplace). Each grapheme-walks
@@ -110,8 +128,13 @@ cursor-walk: tools/cursor_walk
 # ============================================================================
 # pkg-config
 # ============================================================================
-gstr.pc: gstr.pc.in
+# FORCE so a change in VERSION or PREFIX (both computed, not files)
+# regenerates the file instead of installing a stale one.
+gstr.pc: gstr.pc.in FORCE
 	sed -e 's|@PREFIX@|$(PREFIX)|g' -e 's|@VERSION@|$(VERSION)|g' $< > $@
+
+FORCE:
+.PHONY: FORCE
 
 # ============================================================================
 # Install/Uninstall (header-only library)
