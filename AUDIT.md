@@ -216,10 +216,22 @@ Status legend: `[ ]` open · `[x]` fixed · `[d]` deferred (with reason)
   ('g' goto key, char-name table, SIGWINCH, ESC timeout, cursor-walk-verify
   make target, and the props/GCB-rule-chain view whose dead toggle was
   removed 2026-07-09); spec 01's promised macros/coverage targets.
-- [ ] **26. CODING_STANDARDS.md is violated wholesale** by gstr.h since the
-  v2 rewrite (tabs, brace placement, signatures, trailing comments,
-  abbreviated names — compliance applied in 1063c4f, reverted by v2).
-  Rewrite the standards to match reality, or reformat the code.
+- [x] **26. CODING_STANDARDS.md is violated wholesale** by gstr.h.
+  **Fixed 2026-07-10.** Replaced the standards doc with a rewritten one
+  (V2) that resolves the substance — the old "no abbreviations" rule
+  contradicted the public API itself (`gstrlen`, `n_len`); V2 blesses the
+  concise, standard-library-first, pointer-idiom style the code actually
+  uses. Then reconciled the remaining formatting gap Edward's way: **all
+  C sources reformatted to V2's Linux-kernel style** (tabs, function
+  braces on their own line) via a committed `.clang-format`, and the
+  project **standard bumped C17 → C23** (the C99 compatibility claim +
+  gate were retired; `check-compat` now gates C23 + C++17 interop +
+  -Wconversion). The reformat is provably cosmetic: every C file is
+  token-identical before/after (whitespace + macro-continuation joins
+  only), and the full suite + 766/766 conformance pass unchanged. A
+  `make format` / `make format-check` pair plus a pinned
+  clang-format 22.1.5 CI `lint` job keep it from drifting again. The old
+  doc is archived at `CODING_STANDARDS_V1.md`.
 
 ---
 

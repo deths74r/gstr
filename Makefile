@@ -9,8 +9,8 @@ endif
 ifeq ($(origin CXX),default)
 CXX = clang++
 endif
-CFLAGS = -Wall -Wextra -pedantic -std=c17 -O3
-CFLAGS_DEBUG = -Wall -Wextra -pedantic -std=c17 -g -O0
+CFLAGS = -Wall -Wextra -pedantic -std=c23 -O3
+CFLAGS_DEBUG = -Wall -Wextra -pedantic -std=c23 -g -O0
 
 PREFIX = /usr/local
 INCLUDEDIR = $(PREFIX)/include
@@ -105,16 +105,33 @@ test-conformance: $(TESTDIR)/test_conformance
 
 .PHONY: test-conformance
 
-# Compile-only gates for the standards the README claims (C99) and the
-# C++ compatibility shipped in 4cc5757, plus spec 03's zero
+# Compile-only gates: strict C23 conformance (the project standard, per
+# CODING_STANDARDS.md), C++ interop (the header ships extern "C" guards and
+# 4cc5757 fixed real C++ builds), and spec 03's zero
 # -Wconversion/-Wsign-conversion acceptance criterion for the header.
 check-compat: $(HEADER)
-	echo '#include <gstr.h>' | $(CC) -x c -std=c99 -pedantic -Wall -Wextra -Werror -I$(INCDIR) -fsyntax-only -
+	echo '#include <gstr.h>' | $(CC) -x c -std=c23 -pedantic -Wall -Wextra -Werror -I$(INCDIR) -fsyntax-only -
 	echo '#include <gstr.h>' | $(CXX) -x c++ -std=c++17 -Wall -Wextra -Werror -I$(INCDIR) -fsyntax-only -
-	echo '#include <gstr.h>' | $(CC) -x c -std=c17 -Wconversion -Wsign-conversion -Werror -I$(INCDIR) -fsyntax-only -
-	@echo "check-compat: C99, C++17, and -Wconversion gates passed"
+	echo '#include <gstr.h>' | $(CC) -x c -std=c23 -Wconversion -Wsign-conversion -Werror -I$(INCDIR) -fsyntax-only -
+	@echo "check-compat: C23, C++17, and -Wconversion gates passed"
 
 .PHONY: check-compat
+
+# ============================================================================
+# Formatting (clang-format per .clang-format / CODING_STANDARDS.md)
+# ============================================================================
+# Pin the version in CI so results are reproducible (pip install
+# clang-format==22.1.5); override CLANG_FORMAT to point at that binary.
+CLANG_FORMAT ?= clang-format
+FORMAT_FILES = $(HEADER) $(wildcard $(TESTDIR)/*.c) $(wildcard $(TESTDIR)/*.h) $(wildcard tools/*.c)
+
+format:
+	$(CLANG_FORMAT) -i --style=file $(FORMAT_FILES)
+
+format-check:
+	$(CLANG_FORMAT) --dry-run -Werror --style=file $(FORMAT_FILES)
+
+.PHONY: format format-check
 
 test: check-compat run-test
 

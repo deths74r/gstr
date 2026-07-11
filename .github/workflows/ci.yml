@@ -49,6 +49,18 @@ jobs:
       - name: make test-boundary-full
         run: make test-boundary-full CC=clang
 
+  lint:
+    name: clang-format
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+      # Pin the exact formatter version so CI matches local formatting.
+      - run: pip install "clang-format==22.1.5"
+      - run: make format-check
+
   msvc:
     name: msvc (header smoke)
     runs-on: windows-latest
