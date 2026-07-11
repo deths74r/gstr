@@ -250,9 +250,11 @@ Status legend: `[ ]` open · `[x]` fixed · `[d]` deferred (with reason)
     `gstrncasecmp`; the deferred backlog is captured in a project memory.
   - *Adversarial pass broadened the scope beyond the specs originally named:*
     spec 11 mislabeled the shipped `gstr_is_unicode_punctuation` as strict
-    P*-only when it actually classifies **P\*+S\*** (corrected; the
-    unbuilt `gstr_is_unicode_punct_or_symbol` split marked abandoned, a
-    rename-to-match noted deferred); spec 07 §2 was over-claimed as "done"
+    P*-only when it actually classifies **P\*+S\*** (corrected; the unbuilt
+    strict-P* split marked abandoned). The function was then **renamed to
+    `gstr_is_unicode_punct_or_symbol` in v4.0.0** (breaking) so the name
+    matches its P*+S* behavior, freeing `gstr_is_unicode_punctuation` for the
+    still-deferred strict-P* classifier. spec 07 §2 was over-claimed as "done"
     when ~12 public functions still lack doc comments (reclassified deferred
     partial); spec 04's phantom `utf8_display_width()` name corrected to
     `utf8_cpwidth`. (spec 03's removed-bindings note already existed;

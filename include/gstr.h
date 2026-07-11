@@ -1478,7 +1478,7 @@ static inline int utf8_is_wide(uint32_t codepoint)
 }
 
 /*
- * Returns 1 if the codepoint is a Unicode punctuation character
+ * Returns 1 if the codepoint is a Unicode punctuation-or-symbol character
  * (General_Category P* or S*), 0 otherwise.
  *
  * This matches the CommonMark 0.31.2 definition of "Unicode punctuation
@@ -1490,8 +1490,13 @@ static inline int utf8_is_wide(uint32_t codepoint)
  *
  * Codepoints beyond U+10FFFF return 0. The function accepts the full
  * uint32_t range without undefined behavior.
+ *
+ * (Renamed from gstr_is_unicode_punctuation in v4.0.0 so the name matches the
+ * P*+S* behavior. The name gstr_is_unicode_punctuation is reserved for a
+ * strict P*-only classifier that is not yet provided; see
+ * specs/11-unicode-punctuation.md.)
  */
-static inline int gstr_is_unicode_punctuation(uint32_t cp)
+static inline int gstr_is_unicode_punct_or_symbol(uint32_t cp)
 {
 	/* ASCII fast path */
 	if (cp < 0x80) {

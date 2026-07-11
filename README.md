@@ -782,7 +782,7 @@ printf("Truncated: %.*s\n", (int)cut, text);  // "Hello" (only 5 cols fit)
 
 | Function | Description |
 |----------|-------------|
-| `gstr_is_unicode_punctuation(cp)` | Returns 1 if codepoint is Unicode punctuation or symbol (General_Category P\* or S\*). Matches CommonMark 0.31.2 definition. For ASCII, matches `ispunct()`. |
+| `gstr_is_unicode_punct_or_symbol(cp)` | Returns 1 if codepoint is Unicode punctuation or symbol (General_Category P\* or S\*). Matches CommonMark 0.31.2 definition. For ASCII, matches `ispunct()`. _(Renamed from `gstr_is_unicode_punctuation` in v4.0.0.)_ |
 | `gstr_is_whitespace_cp(cp)` | Returns 1 if codepoint has the Unicode White\_Space property (25 codepoints). Codepoint-level variant of `gstr_is_whitespace()`. |
 
 
