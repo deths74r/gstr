@@ -5,6 +5,7 @@ name: CI
 on:
   push:
     branches: [main]
+    tags: ["v*"] # tag pushes run the full suite incl. check-version's tag gate
   pull_request:
   schedule:
     - cron: "0 6 * * 1" # Mondays 06:00 UTC — exercise the >2 GB boundary tests
@@ -26,8 +27,10 @@ jobs:
       CXX: ${{ matrix.cxx }}
     steps:
       - uses: actions/checkout@v4
-      # Runs every suite plus the check-compat gate (C99 + C++17 + zero
-      # -Wconversion/-Wsign-conversion) and the Unicode conformance gate.
+      # Runs every suite plus the check-compat gate (C23 + C++17 + zero
+      # -Wconversion/-Wsign-conversion), the check-version gate (header
+      # fallback / release tag vs the VERSION file), and the Unicode
+      # conformance gate.
       - name: make test
         run: make test CC=$CC CXX=$CXX
       # Confirm the header + pkg-config install into a staging root cleanly.
@@ -48,6 +51,30 @@ jobs:
       - uses: actions/checkout@v4
       - name: make test-boundary-full
         run: make test-boundary-full CC=clang
+
+  tarball:
+    name: tarball version (no .git)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # A release tarball has no .git, so the version must come from the
+      # committed VERSION file (item 22). Roll one exactly the way GitHub's
+      # release tarballs are built (git archive = tracked files only) and
+      # assert the stamped version is real, not the old 0.0.0+unknown fallback.
+      - name: roll and inspect a git-archive tarball
+        run: |
+          git archive --prefix=gstr/ HEAD | tar -x -C "$RUNNER_TEMP"
+          cd "$RUNNER_TEMP/gstr"
+          test ! -d .git
+          test -f VERSION
+          make -s gstr.pc
+          ver=$(sed -n 's/^Version: //p' gstr.pc)
+          echo "tarball pkg-config Version: $ver"
+          case "$ver" in
+            0.0.0*|*unknown*|"") echo "::error::tarball stamped a placeholder version ($ver)"; exit 1 ;;
+          esac
+          # The header fallback / VERSION file consistency must hold offline too.
+          make check-version
 
   lint:
     name: clang-format

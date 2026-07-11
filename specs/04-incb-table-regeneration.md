@@ -220,7 +220,7 @@ The `ZERO_WIDTH_RANGES` table (lines 63-190 in `gstr.h`) is hand-maintained and 
 2. Convert to `(start, end)` pairs.
 3. Sort by start codepoint.
 4. Merge adjacent/overlapping ranges using `merge_adjacent_no_prop()`.
-5. **Exclude** the following codepoints that are already handled specially in `utf8_display_width()` or should not be zero-width:
+5. **Exclude** the following codepoints that are already handled specially in `utf8_cpwidth()` (the spec's draft called this `utf8_display_width()`; no such symbol exists — the shipped width function is `utf8_cpwidth`) or should not be zero-width:
    - U+00AD (SOFT HYPHEN) -- handled separately with width=1 return before ZERO_WIDTH check
    - U+1160..U+11FF (Hangul Jungseong/Jongseong) -- these are Mn but are handled by GCB Hangul logic
    - Actually, review the current table: it does NOT include Hangul Jungseong, so exclude them.

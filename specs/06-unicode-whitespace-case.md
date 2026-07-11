@@ -4,6 +4,17 @@
 
 **Draft** -- Prepared 2026-03-21
 
+**Implementation status (2026-07-11, audit item 25):**
+- **Part A (Unicode whitespace): IMPLEMENTED.** `gstr_is_whitespace` and the
+  trim functions handle the full Unicode `White_Space` set.
+- **Part B (Unicode case operations): DEFERRED — not yet implemented.** The
+  code still ships the ASCII-only behavior (Part B's "Option B"); the
+  recommended Option C (Unicode simple case folding + uppercase tables,
+  ~19 KB) remains the intended future direction but has not been built. All
+  case functions (`gstrlower`, `gstrupper`, `gstrcasecmp`, `gstrncasecmp`,
+  `gstrcasestr`) fold ASCII only. Read Part B below as a design proposal, not
+  as shipped behavior.
+
 ## Scope
 
 This specification addresses two related gaps in `gstr.h` where behavior is limited to ASCII:
@@ -117,6 +128,12 @@ This is a **behavioral change** that could affect existing users. The CHANGELOG 
 ---
 
 ## Part B: Unicode Case Operations
+
+> **DEFERRED (2026-07-11, audit item 25).** None of Part B is implemented.
+> The library folds ASCII only; every design below (Options A/B/C, tables,
+> special cases) is a proposal. Option C is still the intended direction —
+> tracked as an open backlog item — but has not shipped. Nothing in this Part
+> describes current runtime behavior.
 
 ### B.1 Scope Assessment
 

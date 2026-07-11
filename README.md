@@ -858,7 +858,7 @@ Case-insensitive compare (ASCII letters only).
 ```c
 int gstrncasecmp(const char *a, size_t a_len, const char *b, size_t b_len, size_t n);
 ```
-Case-insensitive compare of first N graphemes.
+Case-insensitive compare of first N graphemes (ASCII letters only).
 
 
 #### Prefix/Suffix Functions

@@ -1,6 +1,17 @@
 # Specification: `gstr-cursor-walk` -- Interactive Grapheme Cluster Cursor Walk Tool
 
 > **Historical note (2026-07-09):** the property/GCB-rule-chain view ("p"/`show_props` toggle, §UI) was shipped as a dead toggle (the key existed but no renderer was ever written) and has been removed from `tools/cursor_walk.c`. The props-view design below remains unimplemented; see AUDIT.md item 25.
+>
+> **Unimplemented features — ABANDONED (2026-07-11, audit item 25).** The tool
+> ships a working interactive walker (`run_interactive`, raw termios, arrow-key
+> navigation, `b` bytes toggle) plus `--verify` batch mode. The following
+> designed-but-never-built polish features are **out of scope** — the tool is
+> complete without them, and this spec should be read with that in mind:
+> the `g` goto-offset key, the codepoint-name (`char-name`) table, the
+> `SIGWINCH` live-resize handler (size is queried once at startup only), the
+> ESC-sequence timeout, the `p` property/rule-chain view (removed above), and
+> the `make cursor-walk-verify` convenience target (`--verify` is invoked
+> directly). None are planned; treat their designs below as historical.
 
 ## 1. Purpose
 

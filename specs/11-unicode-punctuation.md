@@ -4,6 +4,23 @@
 
 **Draft** -- Prepared 2026-03-22
 
+**Implementation status (2026-07-11, audit item 25).** What shipped differs
+from the "provide both functions" design below:
+- **Implemented:** a single function `gstr_is_unicode_punctuation(uint32_t cp)`
+  (`include/gstr.h`) that classifies **P\* OR S\*** (the CommonMark-practical
+  behavior), backed by a `UNICODE_PUNCT_SYMBOL_RANGES` table. **Caveat: its
+  name says "punctuation" but its behavior is P\*+S\***, i.e. it does the job
+  the spec assigned to the *other* function. The §Scope / recommendation
+  below describing it as "strict P\*-only" is **wrong** — read those as the
+  original proposal, not shipped behavior.
+- **Not built (ABANDONED):** the separate `gstr_is_unicode_punct_or_symbol()`
+  name and table `UNICODE_PUNCT_RANGES` — the single shipped function already
+  provides P\*+S\*, so a second identical function is redundant.
+- **Not built (DEFERRED, low):** a *strict P\*-only* classifier. No consumer
+  needs it today; md4s uses the P\*+S\* behavior. A future rename to make the
+  name match behavior (e.g. `gstr_is_unicode_punct_or_symbol` as the real
+  name) would be a breaking change — noted in the deferred backlog.
+
 ## Motivation
 
 The md4s streaming markdown parser (https://github.com/deths74r/md4s) needs Unicode-aware word boundary detection for CommonMark emphasis delimiter flanking rules. The CommonMark specification (section 2.1) defines "Unicode punctuation character" as:
@@ -75,6 +92,12 @@ If we implement only P* and not S*, then `$` (Sc), `+` (Sm), `~` (Sm), `<` (Sm),
 The CommonMark spec handles this by saying the definition applies only to non-ASCII characters, and for ASCII characters, `ispunct()` is used. But providing a single unified function that covers both ASCII `ispunct()` and Unicode P*+S* is cleaner and avoids the caller needing to handle the ASCII/Unicode split.
 
 **Recommendation: Provide both functions.** `gstr_is_unicode_punctuation()` for strict P*-only (matches the spec letter). `gstr_is_unicode_punct_or_symbol()` for P*+S* (matches practical needs). The md4s integration will use the P*+S* variant combined with an ASCII fast-path.
+
+> **NOT what shipped (2026-07-11, audit item 25).** Only one function was
+> built — `gstr_is_unicode_punctuation()` — and it implements the **P\*+S\***
+> behavior described here for `_punct_or_symbol`, *not* strict P*-only. The
+> two-function split was abandoned. See the implementation-status note under
+> **Status** at the top.
 
 ---
 

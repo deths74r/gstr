@@ -26,8 +26,21 @@ TESTDIR = test
 HEADER = $(INCDIR)/gstr.h
 
 # ============================================================================
-# Git-based versioning
+# Versioning
 # ============================================================================
+# The committed VERSION file is the single source of truth for the base
+# version; it is the ONLY version input present in a release tarball or a
+# vendored copy of the header (a git checkout adds a +dev/branch suffix on
+# top). `make check-version` fails the build if a release tag or the
+# GSTR_VERSION fallback in the header ever drifts from this file.
+VERSION_FILE := $(dir $(lastword $(MAKEFILE_LIST)))VERSION
+# Strip surrounding whitespace/CR and a stray leading `v` (tags carry the v,
+# the file must not); take only the first line.
+BASE_VERSION := $(shell head -n1 $(VERSION_FILE) 2>/dev/null | tr -d ' \t\r\n' | sed 's/^v//')
+ifeq ($(BASE_VERSION),)
+    BASE_VERSION := 0.0.0
+endif
+
 GIT_HASH := $(shell git rev-parse --short HEAD 2>/dev/null || echo "nogit")
 GIT_TAG := $(shell git describe --tags --exact-match HEAD 2>/dev/null)
 GIT_BRANCH := $(shell git branch --show-current 2>/dev/null)
@@ -35,14 +48,23 @@ LAST_TAG := $(shell git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
 COMMITS_SINCE := $(shell git rev-list $(LAST_TAG)..HEAD --count 2>/dev/null || echo "0")
 
 ifneq ($(GIT_TAG),)
-    VERSION := $(patsubst v%,%,$(GIT_TAG))
+    # On an exact release tag: the base version (check-version asserts the
+    # tag name agrees with the VERSION file).
+    VERSION := $(BASE_VERSION)
 else ifeq ($(GIT_BRANCH),main)
-    VERSION := $(patsubst v%,%,$(LAST_TAG))+dev.$(COMMITS_SINCE)
+    VERSION := $(BASE_VERSION)+dev.$(COMMITS_SINCE)
 else ifneq ($(GIT_BRANCH),)
     BRANCH_SUFFIX := $(shell echo "$(GIT_BRANCH)" | tr '/' '-' | cut -c1-30)
-    VERSION := $(patsubst v%,%,$(LAST_TAG))+$(BRANCH_SUFFIX)
+    VERSION := $(BASE_VERSION)+$(BRANCH_SUFFIX)
+else ifneq ($(GIT_HASH),nogit)
+    # Detached HEAD with git present (PR/CI checkouts, `git checkout <sha>`,
+    # worktrees, mid-rebase): git metadata exists but there's no branch name.
+    # Still mark it a dev build so it never masquerades as a clean release.
+    VERSION := $(BASE_VERSION)+dev.$(COMMITS_SINCE)
 else
-    VERSION := 0.0.0+unknown
+    # No git metadata at all (release tarball, vendored copy): the VERSION
+    # file stands alone.
+    VERSION := $(BASE_VERSION)
 endif
 
 BUILD_TIME := $(shell date +%Y%m%d-%H%M%S)
@@ -148,6 +170,38 @@ check-compat: $(HEADER)
 
 .PHONY: check-compat
 
+# Version-consistency gate (closes spec 08 §build-system's "no version
+# validation" open item). Two invariants:
+#   1. The GSTR_VERSION fallback in the header matches the VERSION file, so a
+#      vendored/header-only copy reports the release it was cut from.
+#   2. When building on an exact git tag, the tag name (minus the leading v)
+#      matches the VERSION file, so `git describe` and pkg-config never
+#      disagree. Non-tag builds skip this half.
+# Cheap no-op on ordinary dev/PR builds; fires at release time.
+# $(VERSION_FILE) is intentionally NOT a prerequisite: it is read into
+# BASE_VERSION at parse time, and listing it would turn a missing file into a
+# cryptic "No rule to make target 'VERSION'" instead of the check below.
+check-version: $(HEADER)
+	@hdr_ver=`grep -m1 'define[ 	]*GSTR_VERSION[ 	]' $(HEADER) | sed -E 's/.*"([^"]*)".*/\1/'`; \
+	if [ "$$hdr_ver" != "$(BASE_VERSION)" ]; then \
+		echo "ERROR: GSTR_VERSION fallback in $(HEADER) ($$hdr_ver) != VERSION file ($(BASE_VERSION))" >&2; \
+		echo "       Update the #define GSTR_VERSION fallback to match VERSION." >&2; \
+		exit 1; \
+	fi; \
+	if [ -n "$(GIT_TAG)" ]; then \
+		tag_ver=`echo "$(GIT_TAG)" | sed 's/^v//'`; \
+		if [ "$$tag_ver" != "$(BASE_VERSION)" ]; then \
+			echo "ERROR: git tag $(GIT_TAG) ($$tag_ver) != VERSION file ($(BASE_VERSION))" >&2; \
+			echo "       Bump the VERSION file to match the release tag before tagging." >&2; \
+			exit 1; \
+		fi; \
+		echo "check-version: tag $(GIT_TAG) and header match VERSION file ($(BASE_VERSION))"; \
+	else \
+		echo "check-version: header matches VERSION file ($(BASE_VERSION)); not on an exact tag"; \
+	fi
+
+.PHONY: check-version
+
 # ============================================================================
 # Formatting (clang-format per .clang-format / CODING_STANDARDS.md)
 # ============================================================================
@@ -164,7 +218,7 @@ format-check:
 
 .PHONY: format format-check
 
-test: check-compat run-test run-test-san
+test: check-compat check-version run-test run-test-san
 
 # Includes the >2 GB boundary tests (offsets past INT_MAX in
 # gstrendswith/gstrsub/gstrrev/gstrstr/gstrreplace). Each grapheme-walks

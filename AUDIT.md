@@ -190,12 +190,28 @@ Status legend: `[ ]` open · `[x]` fixed · `[d]` deferred (with reason)
   `CC = cc` means the ?= never fires; builds silently use cc.
 - [x] **21. No C++-mode or C99-mode compile check**, despite 4cc5757
   shipping a C++ fix and the README claiming C99.
-- [ ] **22. `gstr.pc` staleness** (Makefile:90).
-  *Partially fixed 2026-07-09:* gstr.pc now regenerates on every build
-  via a FORCE prerequisite, so VERSION/PREFIX changes can no longer
-  install a stale file. Still open: tarball (non-git) builds install
-  `Version: 0.0.0+unknown` — needs a release-process decision (e.g. a
-  VERSION file stamped at tag time).
+- [x] **22. `gstr.pc` staleness + tarball versioning** (Makefile).
+  *Fixed in two parts.* (a) 2026-07-09: gstr.pc regenerates on every build
+  via a FORCE prerequisite, so VERSION/PREFIX changes can no longer install
+  a stale file. (b) 2026-07-11: a committed `VERSION` file (`4.0.0`) is now
+  the single source of truth for the base version — the only version input
+  present in a release tarball or a vendored header. The Makefile reads it
+  as `BASE_VERSION` and appends `+dev.N`/branch suffixes only on a git
+  checkout; the no-git branch that used to stamp `0.0.0+unknown` now stamps
+  the file's value. A new `make check-version` gate (wired into `make test`
+  and a dedicated CI `tarball` job) fails the build if the header's
+  `GSTR_VERSION` fallback or a release tag ever drifts from the VERSION
+  file — closing spec 08's "no version validation" open item. The C23
+  switch (item 26) dropped the tested C99-support guarantee, so the base was
+  declared `4.0.0` (major bump). **The `VERSION` file MUST be committed:**
+  `git archive` ships only tracked files, so an untracked VERSION would make
+  a tarball fall back to `0.0.0` — the CI `tarball` job guards this
+  (`test -f VERSION`). Verified against a `.git`-stripped copy of the tree
+  (the exact set of tracked files a committed tarball carries): pkg-config
+  and the installed header both stamp `Version: 4.0.0`. Both check-version
+  halves (header-fallback drift, tag mismatch), the leading-`v` strip, the
+  detached-HEAD `+dev` suffix, and the missing-file error path were each
+  proven by injection.
 - [x] **23. SPDX headers missing on 5 tracked files** (incl.
   scripts/gen_unicode_tables.py).
 
@@ -207,7 +223,7 @@ Status legend: `[ ]` open · `[x]` fixed · `[d]` deferred (with reason)
   Unicode 17.0.0, so the gate runs offline) and checks `utf8_next_grapheme`
   against every vector: **766/766 pass**. Wired into `make test` as a hard
   gate and exposed as `make test-conformance`. `.github/workflows/ci.yml`
-  runs `make test` (all suites + the C99/C++17/-Wconversion compile gates +
+  runs `make test` (all suites + the C23/C++17/-Wconversion compile gates +
   conformance) on ubuntu gcc/clang and macOS clang, verifies a staged
   `DESTDIR` install, runs `make test-boundary-full` off the PR path (the
   CI home for the item-1 compromise), and smoke-compiles under MSVC
@@ -215,13 +231,32 @@ Status legend: `[ ]` open · `[x]` fixed · `[d]` deferred (with reason)
   coverage-upload job (spec 08 §3.4) — needs a Codecov/Coveralls decision;
   gcov works locally today (see item 7). Refresh the committed test file
   when bumping `GSTR_UNICODE_VERSION`.
-- [ ] **25. Never-implemented spec parts, currently reading as fact**:
-  spec 06 Part B (Unicode case ops); spec 07 §1/§5/§6/§7/§9 (gstr_iter,
-  endswith backward-walk, overlap docs + memmove, gstrwellipsis, namespace
-  prefixing) — mark deferred in the specs; spec 02's interactive features
-  ('g' goto key, char-name table, SIGWINCH, ESC timeout, cursor-walk-verify
-  make target, and the props/GCB-rule-chain view whose dead toggle was
-  removed 2026-07-09); spec 01's promised macros/coverage targets.
+- [x] **25. Never-implemented spec parts, currently reading as fact.**
+  **Fixed 2026-07-11.** Each spec now carries an implementation-status block
+  so unbuilt designs stop reading as shipped behavior, triaged deferred vs
+  abandoned (Edward's call per item; full triage in the
+  [gstr-deferred-features] memory backlog):
+  - **Deferred** (still intended): spec 06 Part B Unicode case folding
+    (headline gap — case fns fold ASCII only; ~19 KB Option-C tables);
+    spec 07 §1 `gstr_iter`, §5 `gstrendswith` backward-walk, §6 overlap-UB
+    docs (memmove-safe variants abandoned), §7 `gstrwellipsis`, §9 namespace
+    prefixing (low priority).
+  - **Abandoned** (decided against): spec 02 cursor-walk interactive polish
+    ('g' goto, char-name table, SIGWINCH, ESC timeout, `cursor-walk-verify`
+    target, props view already removed); spec 01 §5.2/§5.4 specialized
+    macros + standing `mcdc-coverage` targets (suite meets coverage without
+    them).
+  - Code/docs: added ASCII-only caveat to `gstrlower` and README
+    `gstrncasecmp`; the deferred backlog is captured in a project memory.
+  - *Adversarial pass broadened the scope beyond the specs originally named:*
+    spec 11 mislabeled the shipped `gstr_is_unicode_punctuation` as strict
+    P*-only when it actually classifies **P\*+S\*** (corrected; the
+    unbuilt `gstr_is_unicode_punct_or_symbol` split marked abandoned, a
+    rename-to-match noted deferred); spec 07 §2 was over-claimed as "done"
+    when ~12 public functions still lack doc comments (reclassified deferred
+    partial); spec 04's phantom `utf8_display_width()` name corrected to
+    `utf8_cpwidth`. (spec 03's removed-bindings note already existed;
+    specs 05/09/10 verified clean.)
 - [x] **26. CODING_STANDARDS.md is violated wholesale** by gstr.h.
   **Fixed 2026-07-10.** Replaced the standards doc with a rewritten one
   (V2) that resolves the substance — the old "no abbreviations" rule

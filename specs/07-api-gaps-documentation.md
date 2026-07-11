@@ -6,6 +6,26 @@
 
 ---
 
+## Implementation Status (2026-07-11, audit item 25)
+
+Several proposals below were **never implemented** and are recorded here so
+the sections don't read as shipped. Read the flagged sections as proposals.
+
+| § | Proposal | Status |
+|---|----------|--------|
+| 1 | Grapheme iterator API (`gstr_iter`) | **Deferred** — not built; the primitives (`utf8_next_grapheme`/`utf8_prev_grapheme`, `gstroff`) exist, an ergonomic iterator on top does not. |
+| 5 | `gstrendswith` backward-walk optimization | **Deferred** — `gstrendswith` still uses the forward walk (correct, but O(n) on the haystack); the backward-walk speedup for short suffixes on huge strings is unbuilt. |
+| 6 | Overlapping-buffer handling | **Split** — documenting which functions are UB when `dst==src` is **deferred (should-do)**; adding `memmove`-based overlap-*safe* variants is **abandoned (YAGNI)** — no `memmove` in the header, no consumer needs it. |
+| 7 | `gstrwellipsis` (width-aware ellipsis) | **Deferred** — not built; `gstrwtrunc` (width truncation) exists, the width-aware ellipsis variant does not. |
+| 9 | Namespace prefixing (`GSTR_`) | **Deferred, low priority** — internal macros/helpers are still unprefixed (e.g. `UTF8_MAX_BYTES`); a real macro-collision-hygiene concern for a header lib, but invasive and not urgent. |
+| 2 | Per-function doc comments | **Deferred (partial)** — the `utf8_*` helpers (§2.1-2.5), `gstrrev` (§2.16), and `gstrlower` (§2.17) have doc comments, but ~12 public functions listed in §2 still do not (`gstrlen`, `gstrcmp`, `gstrstartswith`, `gstrspn`, `gstrchr`, `gstrsub`, `gstrcpy`, `gstrcat`, `gstrdup`, `gstrsep`, `gstrltrim`, `gstrfill`). |
+
+Sections not listed above (§3 `gstrrstr` empty-needle, §4 `gstrrev` malloc
+elimination, §8 `static inline`) were verified done in later work and are not
+re-audited here.
+
+---
+
 ## 1. Grapheme Iterator API
 
 ### Problem

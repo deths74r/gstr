@@ -31,9 +31,11 @@
 extern "C" {
 #endif
 
-/* Version info (set by build system, fallback for header-only use) */
+/* Version info (set by build system, fallback for header-only use).
+ * The fallback mirrors the committed VERSION file; `make check-version`
+ * fails the build if the two ever drift. */
 #ifndef GSTR_VERSION
-#define GSTR_VERSION "0.0.0+dev"
+#define GSTR_VERSION "4.0.0"
 #endif
 #ifndef GSTR_BUILD_ID
 #define GSTR_BUILD_ID "dev"
@@ -3312,6 +3314,11 @@ static inline size_t gstrreplace(char *dst, size_t dst_size, const char *src,
  * ============================================================================
  */
 
+/*
+ * Converts ASCII uppercase letters to lowercase, copying to dst.
+ * Non-ASCII characters are copied unchanged (full Unicode case folding is
+ * deferred; see specs/06-unicode-whitespace-case.md Part B).
+ */
 static inline size_t gstrlower(char *dst, size_t dst_size, const char *src,
 			       size_t src_len)
 {

@@ -428,6 +428,17 @@ Test sequences where multiple state variables are active simultaneously:
 
 ## 5. Implementation Approach
 
+> **Implementation status (2026-07-11, audit item 25).** The MC/DC suite
+> itself is **IMPLEMENTED** (`test/test_mcdc_grapheme_break.c`, passing, and
+> its full-branch coverage of `is_grapheme_break` was verified with `gcov`
+> during audit item 19). Two proposals in this section were **ABANDONED**,
+> as the suite meets its coverage goal without them:
+> - **§5.2 specialized macros** `ASSERT_BREAK`, `ASSERT_GRAPHEME_COUNT`, and
+>   the self-documenting `MCDC_PAIR` were never added; the tests use the
+>   general `ASSERT`/`ASSERT_EQ` macros in `test/test_macros.h`.
+> - **§5.4 standing coverage targets** (`mcdc-coverage`, `mcdc-coverage-clang`)
+>   were never added to the Makefile; coverage is checked ad-hoc when needed.
+
 ### 5.1 File Structure
 
 ```

@@ -111,6 +111,13 @@ Extend the `clean` target to remove the generated `gstr.pc`.
 
 ### 3.1 GitHub Actions Workflow
 
+> **Implemented in audit item 24; superseded in part by item 26.** The live
+> `.github/workflows/ci.yml` follows the intent below but the project adopted
+> **C23** as its single standard (audit item 26), dropping the C99-support
+> guarantee. Treat every `-std=c99` / `-std=c17` cell in the matrix below as
+> `-std=c23`; the C99 columns and the "Verifies C99 compatibility claim" note
+> no longer apply. The matrix is retained as design history.
+
 Create `.github/workflows/ci.yml` with the following matrix and jobs.
 
 ### 3.2 Build Matrix
@@ -312,9 +319,14 @@ These activate when the header is used directly (copied into a project, no Makef
    - Attaches the header file as a release asset (convenient for users who download directly).
    - Publishes the changelog (if one exists).
 
-4. **No version validation.** There is no check that a tagged version matches any version string inside the header or other files. The `check-bindings` target (Section 5.3) could be extended to also verify that the `GSTR_VERSION` fallback in the header is updated for release tags.
+4. **No version validation.** ~~There is no check that a tagged version matches any version string inside the header or other files.~~ **RESOLVED 2026-07-11 (audit item 22):** a committed `VERSION` file is now the single source of truth, and the `check-version` Makefile target (wired into `make test` and a CI `tarball` job) fails the build if the header's `GSTR_VERSION` fallback or a release tag drifts from it.
 
 ### 6.4 Recommended Release Process
+
+> **SUPERSEDED 2026-07-11 by `RELEASING.md` (audit item 22).** The manual
+> two-place version bump below was replaced by the committed `VERSION` file
+> plus the `check-version` gate. The current, authoritative release steps
+> live in `RELEASING.md`; the list below is retained only as design history.
 
 1. Update the fallback `GSTR_VERSION` in `gstr.h` from `"0.0.0+dev"` to the release version (e.g., `"1.0.0"`).
 2. Update `GSTR_UNICODE_VERSION` if tables have been regenerated.
