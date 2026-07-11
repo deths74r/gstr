@@ -176,10 +176,16 @@ Status legend: `[ ]` open · `[x]` fixed · `[d]` deferred (with reason)
 
 ## E. Build hygiene
 
-- [ ] **19. `CFLAGS` (-O3) was consumed by no rule** (Makefile:5).
-  *Partially fixed 2026-07-09:* the new test_type_boundary rule builds
-  with $(CFLAGS), so one optimized build is now exercised per default
-  test run. Still open: the other nine targets build only at -O0.
+- [x] **19. Tests never exercised optimized code** (Makefile:5).
+  **Fixed 2026-07-11.** `make test` now runs the whole suite twice — the
+  existing debug build (-O0) and a second pass at **-O2 with
+  AddressSanitizer + UndefinedBehaviorSanitizer** (`-fno-sanitize-recover`,
+  so any UB or memory error is a hard failure). One `.san` pattern rule
+  drives all suites; `make run-test-san` runs just that pass. The full
+  suite (900+ assertions + 766/766 conformance) is clean under sanitizers
+  on both clang and gcc, and total `make test` wall time stays ~7 s. This
+  closes the gap where the shipped optimized code path was never tested;
+  it also retroactively guards the size_t/INT_MAX bug class from item 1.
 - [x] **20. `CC ?= clang` is a no-op** (Makefile:4) — GNU make's built-in
   `CC = cc` means the ?= never fires; builds silently use cc.
 - [x] **21. No C++-mode or C99-mode compile check**, despite 4cc5757

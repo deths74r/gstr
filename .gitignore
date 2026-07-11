@@ -22,3 +22,4 @@ scripts/.unicode_cache/
 .sift/
 
 test/test_conformance
+test/*.san

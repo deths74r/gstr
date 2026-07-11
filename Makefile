@@ -11,6 +11,11 @@ CXX = clang++
 endif
 CFLAGS = -Wall -Wextra -pedantic -std=c23 -O3
 CFLAGS_DEBUG = -Wall -Wextra -pedantic -std=c23 -g -O0
+# Optimized + AddressSanitizer + UndefinedBehaviorSanitizer. -O2 so the
+# tests exercise the code users actually ship; -fno-sanitize-recover makes
+# any UB or memory error a hard failure (nonzero exit) instead of a warning.
+CFLAGS_SAN = -Wall -Wextra -pedantic -std=c23 -g -O2 \
+	-fsanitize=address,undefined -fno-sanitize-recover=all
 
 PREFIX = /usr/local
 INCLUDEDIR = $(PREFIX)/include
@@ -83,7 +88,25 @@ $(TESTDIR)/test_type_boundary: $(TESTDIR)/test_type_boundary.c $(TESTDIR)/test_m
 $(TESTDIR)/test_conformance: $(TESTDIR)/test_conformance.c $(HEADER)
 	$(CC) $(CFLAGS_DEBUG) -I$(INCDIR) $< -o $@
 
-build-test: $(TESTDIR)/test_gstr $(TESTDIR)/test_grapheme_walk $(TESTDIR)/test_utf8_layer $(TESTDIR)/test_edge_cases $(TESTDIR)/test_mcdc_grapheme_break $(TESTDIR)/test_unicode_punct $(TESTDIR)/test_gstr_stress $(TESTDIR)/test_new_functions_stress $(TESTDIR)/test_type_boundary $(TESTDIR)/test_conformance
+# Suites that carry a pass/fail exit code (excludes cursor_walk; conformance
+# is run separately because it needs the data-file argument).
+TEST_SUITES = test_gstr test_grapheme_walk test_utf8_layer test_edge_cases \
+	test_mcdc_grapheme_break test_unicode_punct test_gstr_stress \
+	test_new_functions_stress test_type_boundary
+DEBUG_BINS = $(TEST_SUITES:%=$(TESTDIR)/%)
+SAN_BINS = $(TEST_SUITES:%=$(TESTDIR)/%.san)
+
+build-test: $(DEBUG_BINS) $(TESTDIR)/test_conformance
+
+# Sanitized (-O2 + ASan/UBSan) build of every suite. One pattern rule covers
+# all of them; -I$(TESTDIR) and VERSION_FLAGS are harmless where unused.
+$(TESTDIR)/%.san: $(TESTDIR)/%.c $(HEADER)
+	$(CC) $(CFLAGS_SAN) $(VERSION_FLAGS) -I$(INCDIR) -I$(TESTDIR) $< -o $@
+
+$(TESTDIR)/test_conformance.san: $(TESTDIR)/test_conformance.c $(HEADER)
+	$(CC) $(CFLAGS_SAN) -I$(INCDIR) $< -o $@
+
+build-test-san: $(SAN_BINS) $(TESTDIR)/test_conformance.san
 
 run-test: build-test
 	./$(TESTDIR)/test_gstr
@@ -96,6 +119,14 @@ run-test: build-test
 	./$(TESTDIR)/test_new_functions_stress
 	./$(TESTDIR)/test_type_boundary
 	$(MAKE) test-conformance
+
+# Re-run every suite under -O2 + ASan + UBSan. Folded into `make test`.
+run-test-san: build-test-san
+	@echo "--- sanitized (-O2 + ASan/UBSan) run ---"
+	for b in $(SAN_BINS); do echo "== $$b =="; ./$$b || exit 1; done
+	./$(TESTDIR)/test_conformance.san $(TESTDIR)/GraphemeBreakTest.txt
+
+.PHONY: build-test-san run-test-san
 
 # Unicode GraphemeBreakTest.txt conformance gate (spec 01 §7, spec 08 §3.5).
 # The test vectors are committed at test/GraphemeBreakTest.txt so this runs
@@ -133,7 +164,7 @@ format-check:
 
 .PHONY: format format-check
 
-test: check-compat run-test
+test: check-compat run-test run-test-san
 
 # Includes the >2 GB boundary tests (offsets past INT_MAX in
 # gstrendswith/gstrsub/gstrrev/gstrstr/gstrreplace). Each grapheme-walks
@@ -192,6 +223,7 @@ clean:
 	rm -f $(TESTDIR)/test_new_functions_stress
 	rm -f $(TESTDIR)/test_type_boundary
 	rm -f $(TESTDIR)/test_conformance
+	rm -f $(TESTDIR)/*.san
 	rm -f tools/cursor_walk
 	rm -f *.db-shm *.db-wal
 	rm -rf scripts/.unicode_cache/

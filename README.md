@@ -1103,10 +1103,13 @@ Center string by padding both sides to reach `target_cols` terminal columns. Ret
 
 ```bash
 make              # Build all test binaries
-make test         # Build and run all tests (~900 assertions across 9 suites),
-                  #   the C23/C++17/-Wconversion compile gates, and the
-                  #   Unicode GraphemeBreakTest conformance suite
+make test         # Build and run all tests (~900 assertions across 9 suites)
+                  #   twice — once debug (-O0) and once optimized (-O2 with
+                  #   AddressSanitizer + UndefinedBehaviorSanitizer) — plus the
+                  #   C23/C++17/-Wconversion compile gates and the Unicode
+                  #   GraphemeBreakTest conformance suite
 make test-conformance    # Run only the Unicode conformance gate
+make run-test-san        # Run only the sanitized (-O2 + ASan/UBSan) pass
 make test-boundary-full  # Also run the >2 GB / past-INT_MAX regression
                          # tests (minutes each; run before releases)
 make build-test   # Build test binaries without running
