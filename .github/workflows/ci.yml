@@ -1,0 +1,67 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2025 Edward J Edmonds <edward.edmonds@gmail.com>
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: "0 6 * * 1" # Mondays 06:00 UTC — exercise the >2 GB boundary tests
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: test (${{ matrix.os }}, ${{ matrix.cc }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-latest, cc: gcc, cxx: g++ }
+          - { os: ubuntu-latest, cc: clang, cxx: clang++ }
+          - { os: macos-latest, cc: clang, cxx: clang++ }
+    env:
+      CC: ${{ matrix.cc }}
+      CXX: ${{ matrix.cxx }}
+    steps:
+      - uses: actions/checkout@v4
+      # Runs every suite plus the check-compat gate (C99 + C++17 + zero
+      # -Wconversion/-Wsign-conversion) and the Unicode conformance gate.
+      - name: make test
+        run: make test CC=$CC CXX=$CXX
+      # Confirm the header + pkg-config install into a staging root cleanly.
+      - name: staged install
+        run: |
+          make install DESTDIR="$PWD/_staging" PREFIX=/usr
+          test -f _staging/usr/include/gstr.h
+          test -f _staging/usr/lib/pkgconfig/gstr.pc
+
+  boundary:
+    name: boundary (>2 GB, past INT_MAX)
+    # Skip on PRs: each vector grapheme-walks ~2^31 positions (minutes) and
+    # needs >2 GB RAM. Runs on pushes to main, the weekly schedule, and
+    # manual dispatch — the CI home for the item-1 documented compromise.
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: make test-boundary-full
+        run: make test-boundary-full CC=clang
+
+  msvc:
+    name: msvc (header smoke)
+    runs-on: windows-latest
+    # Header-only C should compile under MSVC, but its C99/C11 support has
+    # historically lagged; allowed to fail until any issues are catalogued.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ilammy/msvc-dev-cmd@v1
+      - name: cl.exe compile smoke test
+        shell: cmd
+        run: |
+          echo #include "gstr.h" > smoke.c
+          echo int main(void) { return (int)gstrlen("hi", 2) - 2; } >> smoke.c
+          cl /std:c17 /W3 /I include smoke.c /Fe:smoke.exe
+          smoke.exe

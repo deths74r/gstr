@@ -80,7 +80,10 @@ $(TESTDIR)/test_new_functions_stress: $(TESTDIR)/test_new_functions_stress.c $(H
 $(TESTDIR)/test_type_boundary: $(TESTDIR)/test_type_boundary.c $(TESTDIR)/test_macros.h $(HEADER)
 	$(CC) $(CFLAGS) -I$(INCDIR) -I$(TESTDIR) $< -o $@
 
-build-test: $(TESTDIR)/test_gstr $(TESTDIR)/test_grapheme_walk $(TESTDIR)/test_utf8_layer $(TESTDIR)/test_edge_cases $(TESTDIR)/test_mcdc_grapheme_break $(TESTDIR)/test_unicode_punct $(TESTDIR)/test_gstr_stress $(TESTDIR)/test_new_functions_stress $(TESTDIR)/test_type_boundary
+$(TESTDIR)/test_conformance: $(TESTDIR)/test_conformance.c $(HEADER)
+	$(CC) $(CFLAGS_DEBUG) -I$(INCDIR) $< -o $@
+
+build-test: $(TESTDIR)/test_gstr $(TESTDIR)/test_grapheme_walk $(TESTDIR)/test_utf8_layer $(TESTDIR)/test_edge_cases $(TESTDIR)/test_mcdc_grapheme_break $(TESTDIR)/test_unicode_punct $(TESTDIR)/test_gstr_stress $(TESTDIR)/test_new_functions_stress $(TESTDIR)/test_type_boundary $(TESTDIR)/test_conformance
 
 run-test: build-test
 	./$(TESTDIR)/test_gstr
@@ -92,6 +95,15 @@ run-test: build-test
 	./$(TESTDIR)/test_gstr_stress
 	./$(TESTDIR)/test_new_functions_stress
 	./$(TESTDIR)/test_type_boundary
+	$(MAKE) test-conformance
+
+# Unicode GraphemeBreakTest.txt conformance gate (spec 01 §7, spec 08 §3.5).
+# The test vectors are committed at test/GraphemeBreakTest.txt so this runs
+# offline; refresh the file when bumping GSTR_UNICODE_VERSION.
+test-conformance: $(TESTDIR)/test_conformance
+	./$(TESTDIR)/test_conformance $(TESTDIR)/GraphemeBreakTest.txt
+
+.PHONY: test-conformance
 
 # Compile-only gates for the standards the README claims (C99) and the
 # C++ compatibility shipped in 4cc5757, plus spec 03's zero
@@ -162,6 +174,7 @@ clean:
 	rm -f $(TESTDIR)/test_gstr_stress
 	rm -f $(TESTDIR)/test_new_functions_stress
 	rm -f $(TESTDIR)/test_type_boundary
+	rm -f $(TESTDIR)/test_conformance
 	rm -f tools/cursor_walk
 	rm -f *.db-shm *.db-wal
 	rm -rf scripts/.unicode_cache/

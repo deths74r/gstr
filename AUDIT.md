@@ -195,10 +195,20 @@ Status legend: `[ ]` open · `[x]` fixed · `[d]` deferred (with reason)
 
 ## F. Bigger decisions — implement or formally defer
 
-- [ ] **24. CI + Unicode conformance gate** (spec 08:114, spec 01 §7).
-  Promised as "a hard pass/fail gate"; no .github/, no conformance runner,
-  no coverage targets exist. This is the single item that would have caught
-  most of section A/B.
+- [x] **24. CI + Unicode conformance gate** (spec 08:114, spec 01 §7).
+  **Fixed 2026-07-10.** `test/test_conformance.c` parses the official
+  Unicode `GraphemeBreakTest.txt` (committed at `test/GraphemeBreakTest.txt`,
+  Unicode 17.0.0, so the gate runs offline) and checks `utf8_next_grapheme`
+  against every vector: **766/766 pass**. Wired into `make test` as a hard
+  gate and exposed as `make test-conformance`. `.github/workflows/ci.yml`
+  runs `make test` (all suites + the C99/C++17/-Wconversion compile gates +
+  conformance) on ubuntu gcc/clang and macOS clang, verifies a staged
+  `DESTDIR` install, runs `make test-boundary-full` off the PR path (the
+  CI home for the item-1 compromise), and smoke-compiles under MSVC
+  (continue-on-error, per spec 08's feasibility note). **Deferred:** the
+  coverage-upload job (spec 08 §3.4) — needs a Codecov/Coveralls decision;
+  gcov works locally today (see item 7). Refresh the committed test file
+  when bumping `GSTR_UNICODE_VERSION`.
 - [ ] **25. Never-implemented spec parts, currently reading as fact**:
   spec 06 Part B (Unicode case ops); spec 07 §1/§5/§6/§7/§9 (gstr_iter,
   endswith backward-walk, overlap docs + memmove, gstrwellipsis, namespace

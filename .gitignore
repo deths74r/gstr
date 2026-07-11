@@ -20,3 +20,5 @@ scripts/.unicode_cache/
 
 # Sift agent memory (per-project database)
 .sift/
+
+test/test_conformance
