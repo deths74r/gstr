@@ -1,0 +1,21 @@
+# SPDX-License-Identifier: MIT
+# C style per CODING_STANDARDS.md: Linux-kernel formatting — tabs (8-wide),
+# function braces on their own line, control-structure braces attached,
+# pointer asterisk on the variable name.
+BasedOnStyle: LLVM
+Language: Cpp
+IndentWidth: 8
+TabWidth: 8
+UseTab: ForContinuationAndIndentation
+ContinuationIndentWidth: 8
+ColumnLimit: 80
+BreakBeforeBraces: Linux
+PointerAlignment: Right
+AllowShortFunctionsOnASingleLine: None
+AllowShortIfStatementsOnASingleLine: false
+AllowShortLoopsOnASingleLine: false
+ReflowComments: false
+SortIncludes: false
+# Keep string literals intact: never split a long literal (protects the
+# UTF-8 hex-escape test data and format strings from mis-split escapes).
+BreakStringLiterals: false
